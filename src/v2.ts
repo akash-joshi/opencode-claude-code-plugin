@@ -6,7 +6,6 @@ import type { ClaudeCodeProviderSettings } from "./types.js"
 
 export const PROVIDER_ID = "claude-code"
 const PROVIDER_NAME = "Claude Code (Default)"
-const PACKAGE_SPEC = "@khalilgharbaoui/opencode-claude-code-plugin"
 
 /**
  * Merge plugin options over the factory defaults. Mirrors the V1 `provider`
@@ -71,6 +70,24 @@ function toV2Model(providerID: Provider.ID, model: OpenCodeModel): Model.Info {
   } as unknown as Model.Info
 }
 
+/**
+ * Provider-package entrypoint. OpenCode resolves the provider's `package`
+ * field, imports it, and calls `model(modelID, settings)` to build the
+ * language model for a request. SDK instances are cached per settings so
+ * repeated calls share one CLI session space.
+ */
+const sdkCache = new Map<string, ReturnType<typeof createClaudeCode>>()
+
+export function model(modelID: string, settings: Record<string, unknown> = {}) {
+  const key = JSON.stringify(settings)
+  let sdk = sdkCache.get(key)
+  if (!sdk) {
+    sdk = createClaudeCode(settingsFromOptions(settings))
+    sdkCache.set(key, sdk)
+  }
+  return sdk.languageModel(String(modelID))
+}
+
 export default Plugin.define({
   id: "claude-code-v2",
   async setup(ctx) {
@@ -84,7 +101,12 @@ export default Plugin.define({
           ...Provider.Info.empty(providerID),
           name: PROVIDER_NAME,
           activation: "enabled",
-          package: PACKAGE_SPEC,
+          // Self-reference: this module is the provider runtime. OpenCode
+          // imports it and calls the `model(modelID, settings)` export above.
+          // import.meta.url resolves to the loaded file (dist/v2.js), so the
+          // fork works from any checkout path.
+          package: import.meta.url,
+          settings: settingsFromOptions((ctx.options ?? {}) as Record<string, unknown>),
         },
         models: Object.values(defaultModels).map((model) => toV2Model(providerID, model)),
       })

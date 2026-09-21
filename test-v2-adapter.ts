@@ -139,3 +139,19 @@ test("settingsFromOptions passes provider settings through with defaults", () =>
   const customised = settingsFromOptions({ cliPath: CLI_PATH })
   assert.equal(customised.cliPath, CLI_PATH)
 })
+
+test("package entry exports model(modelID, settings) returning a v3 language model", async () => {
+  const entry = await import("./src/v2.js")
+  assert.equal(typeof entry.model, "function")
+  const language = await entry.model(HAUKU_ID, {})
+  assert.equal(language?.specificationVersion, "v3")
+})
+
+test("registered provider info carries a loadable package reference", async () => {
+  const { ctx, captured } = makeCtx()
+  await adapter.setup(ctx)
+  const { editor, added } = makeEditor()
+  for (const transform of captured.providerTransforms) transform(editor)
+  assert.equal(typeof added[0].info.package, "string")
+  assert.ok(added[0].info.package.length > 0)
+})
