@@ -195,3 +195,26 @@ test("default export also exposes model for the provider-package loader", async 
     "v3",
   )
 })
+
+test("provider package uses the aisdk: factory contract", async () => {
+  const entry = await import("./src/v2.js") as Record<string, unknown>
+  const factoryName = Object.keys(entry).find(
+    (key) => key.startsWith("create") && typeof entry[key] === "function",
+  )
+  assert.ok(factoryName, "expected a create* factory export")
+  const factory = entry[factoryName] as (options: Record<string, unknown>) => {
+    languageModel: (modelID: string) => unknown
+  }
+  const sdk = factory({ name: PROVIDER_ID })
+  assert.equal(typeof sdk.languageModel, "function")
+  const language = sdk.languageModel(HAUKU_ID) as { specificationVersion?: string }
+  assert.equal(language?.specificationVersion, "v3")
+})
+
+test("registered provider info package carries the aisdk: prefix", async () => {
+  const { ctx, captured } = makeCtx()
+  await adapter.setup(ctx)
+  const { editor, added } = makeEditor()
+  for (const transform of captured.providerTransforms) transform(editor)
+  assert.ok(String(added[0].info.package).startsWith("aisdk:"))
+})

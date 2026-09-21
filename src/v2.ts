@@ -1,5 +1,5 @@
 import { Model, Plugin, Provider } from "@opencode/plugin"
-import { createClaudeCode } from "./index.js"
+import { createClaudeCode as createClaudeCodeRuntime } from "./index.js"
 import { defaultModels } from "./models.js"
 import type { OpenCodeModel } from "./opencode-types.js"
 import type { ClaudeCodeProviderSettings } from "./types.js"
@@ -76,13 +76,23 @@ export function toV2Model(providerID: Provider.ID, model: OpenCodeModel): Model.
  * language model for a request. SDK instances are cached per settings so
  * repeated calls share one CLI session space.
  */
-const sdkCache = new Map<string, ReturnType<typeof createClaudeCode>>()
+/**
+ * AI SDK factory entrypoint. OpenCode resolves `package: "aisdk:<module>"` by
+ * importing the module and calling its first `create*` export with
+ * `{ name: providerID, apiKey, headers, body, fetch }`. Unknown keys pass
+ * through `settingsFromOptions`, which keeps only what the CLI runner reads.
+ */
+export function createClaudeCodeProvider(options: Record<string, unknown> = {}) {
+  return createClaudeCodeRuntime(settingsFromOptions(options))
+}
+
+const sdkCache = new Map<string, ReturnType<typeof createClaudeCodeRuntime>>()
 
 export function model(modelID: string, settings: Record<string, unknown> = {}) {
   const key = JSON.stringify(settings)
   let sdk = sdkCache.get(key)
   if (!sdk) {
-    sdk = createClaudeCode(settingsFromOptions(settings))
+    sdk = createClaudeCodeRuntime(settingsFromOptions(settings))
     sdkCache.set(key, sdk)
   }
   const language = sdk.languageModel(String(modelID))
@@ -98,11 +108,12 @@ export function buildProviderInfo(
     id: providerID,
     name: PROVIDER_NAME,
     activation: "enabled",
-    // Self-reference: this module is the provider runtime. OpenCode
-    // imports it and calls the `model(modelID, settings)` export above.
-    // import.meta.url resolves to the loaded file (dist/v2.js), so the
-    // fork works from any checkout path.
-    package: import.meta.url,
+    // Self-reference through the AI SDK chain: OpenCode imports this module
+    // (import.meta.url resolves to the loaded file, so the fork works from
+    // any checkout path) and calls its first `create*` export as a factory.
+    // The `aisdk:` prefix is mandatory, without it the module goes down the
+    // native provider-package path instead.
+    package: `aisdk:${import.meta.url}`,
     settings: settings as Provider.Info["settings"],
   } as unknown as Provider.Info
 }
@@ -112,7 +123,7 @@ const definition = Plugin.define({
   async setup(ctx) {
     const providerID = PROVIDER_ID as Provider.ID
     const settings = settingsFromOptions((ctx.options ?? {}) as Record<string, unknown>)
-    const sdk = createClaudeCode(settings)
+    const sdk = createClaudeCodeRuntime(settings)
 
     await ctx.provider.transform((editor) => {
       editor.add({
