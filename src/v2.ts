@@ -85,7 +85,8 @@ export function model(modelID: string, settings: Record<string, unknown> = {}) {
     sdk = createClaudeCode(settingsFromOptions(settings))
     sdkCache.set(key, sdk)
   }
-  return sdk.languageModel(String(modelID))
+  const language = sdk.languageModel(String(modelID))
+  return language
 }
 
 export function buildProviderInfo(
@@ -106,7 +107,7 @@ export function buildProviderInfo(
   } as unknown as Provider.Info
 }
 
-export default Plugin.define({
+const definition = Plugin.define({
   id: "claude-code-v2",
   async setup(ctx) {
     const providerID = PROVIDER_ID as Provider.ID
@@ -138,3 +139,10 @@ export default Plugin.define({
     )
   },
 })
+
+/**
+ * The default export serves two loaders at once. The plugin loader reads
+ * `id`/`setup`; the provider-package loader reads `model`. Excess keys are
+ * ignored by both, mirroring the documented V1/V2 dual-implementation shape.
+ */
+export default { ...definition, model }

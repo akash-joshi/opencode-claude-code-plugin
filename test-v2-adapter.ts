@@ -184,3 +184,14 @@ test("provider info decodes against V2 Provider.Info", async () => {
   }
   assert.equal(failure, undefined, `provider info failed decode: ${failure}`)
 })
+
+test("default export also exposes model for the provider-package loader", async () => {
+  const entry = await import("./src/v2.js")
+  const def = entry.default as unknown as Record<string, unknown>
+  assert.equal(typeof def["model"], "function")
+  const language = await (def["model"] as typeof entry.model)(HAUKU_ID, {})
+  assert.equal(
+    (language as unknown as { specificationVersion?: string }).specificationVersion,
+    "v3",
+  )
+})
