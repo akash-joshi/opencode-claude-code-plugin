@@ -155,3 +155,32 @@ test("registered provider info carries a loadable package reference", async () =
   assert.equal(typeof added[0].info.package, "string")
   assert.ok(added[0].info.package.length > 0)
 })
+
+test("every registered model decodes against V2 Model.Info", async () => {
+  const { Schema } = await import("effect")
+  const { Model, Provider } = await import("@opencode/plugin")
+  const { toV2Model } = await import("./src/v2.js")
+  const providerID = PROVIDER_ID as Provider.ID
+  for (const [id, source] of Object.entries(defaultModels)) {
+    let failure: string | undefined
+    try {
+      Schema.decodeUnknownSync(Model.Info)(toV2Model(providerID, source))
+    } catch (error) {
+      failure = String(error).slice(0, 1500)
+    }
+    assert.equal(failure, undefined, `${id} failed Model.Info decode: ${failure}`)
+  }
+})
+
+test("provider info decodes against V2 Provider.Info", async () => {
+  const { Schema } = await import("effect")
+  const { Provider } = await import("@opencode/plugin")
+  const { buildProviderInfo } = await import("./src/v2.js")
+  let failure: string | undefined
+  try {
+    Schema.decodeUnknownSync(Provider.Info)(buildProviderInfo(PROVIDER_ID as Provider.ID, {}))
+  } catch (error) {
+    failure = String(error).slice(0, 1500)
+  }
+  assert.equal(failure, undefined, `provider info failed decode: ${failure}`)
+})

@@ -33,7 +33,7 @@ function modalities(flags: Record<string, boolean>): Array<string> {
  * only (plain strings and numbers at runtime), so the fully-typed default
  * is spread first and the mapped fields are asserted once, in one place.
  */
-function toV2Model(providerID: Provider.ID, model: OpenCodeModel): Model.Info {
+export function toV2Model(providerID: Provider.ID, model: OpenCodeModel): Model.Info {
   const id = model.id as Model.ID
   const base = Model.Info.default(providerID, id)
   return {
@@ -88,6 +88,24 @@ export function model(modelID: string, settings: Record<string, unknown> = {}) {
   return sdk.languageModel(String(modelID))
 }
 
+export function buildProviderInfo(
+  providerID: Provider.ID,
+  settings: ClaudeCodeProviderSettings,
+): Provider.Info {
+  return {
+    ...Provider.Info.empty(providerID),
+    id: providerID,
+    name: PROVIDER_NAME,
+    activation: "enabled",
+    // Self-reference: this module is the provider runtime. OpenCode
+    // imports it and calls the `model(modelID, settings)` export above.
+    // import.meta.url resolves to the loaded file (dist/v2.js), so the
+    // fork works from any checkout path.
+    package: import.meta.url,
+    settings: settings as Provider.Info["settings"],
+  } as unknown as Provider.Info
+}
+
 export default Plugin.define({
   id: "claude-code-v2",
   async setup(ctx) {
@@ -97,17 +115,7 @@ export default Plugin.define({
 
     await ctx.provider.transform((editor) => {
       editor.add({
-        info: {
-          ...Provider.Info.empty(providerID),
-          name: PROVIDER_NAME,
-          activation: "enabled",
-          // Self-reference: this module is the provider runtime. OpenCode
-          // imports it and calls the `model(modelID, settings)` export above.
-          // import.meta.url resolves to the loaded file (dist/v2.js), so the
-          // fork works from any checkout path.
-          package: import.meta.url,
-          settings: settingsFromOptions((ctx.options ?? {}) as Record<string, unknown>),
-        },
+        info: buildProviderInfo(providerID, settings),
         models: Object.values(defaultModels).map((model) => toV2Model(providerID, model)),
       })
     })
