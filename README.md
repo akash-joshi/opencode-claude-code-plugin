@@ -1,20 +1,18 @@
 # opencode-claude-code-plugin (OpenCode V2 fork)
 
-[![npm](https://img.shields.io/npm/v/@khalilgharbaoui/opencode-claude-code-plugin.svg)](https://www.npmjs.com/package/@khalilgharbaoui/opencode-claude-code-plugin)
-
 Use Claude models inside [opencode](https://opencode.ai) by driving the official **Claude Code CLI** (`claude`) as a subprocess. opencode therefore inherits whatever authentication that CLI already holds: a Claude subscription login, an API key, Bedrock, or Vertex. This plugin never reads, stores, or replays an OAuth token of its own.
 
 - **Your CLI's auth, untouched.** Because `claude` does the authenticating, there is no subscription token here to lift and replay against the Anthropic API. That replay is what proxy-style opencode plugins do, it is a practice Anthropic has disallowed for third-party tools in 2026, and it is structurally not something this plugin can do.
 - **opencode stays in charge of your machine.** Bash, Edit, Write, WebFetch and subagent dispatch are executed by opencode, behind its permission prompts and audit log, rather than by Claude Code. See [Selective tool proxy](#selective-tool-proxy).
 - **Headless by default, which has a billing consequence.** `claude --print` usage on a subscription plan draws from the separate Agent SDK / extra-usage allowance rather than from normal plan usage; API-key authentication is unaffected. See [Billing](#billing).
 
-> Maintained fork of [`unixfox/opencode-claude-code-plugin`](https://github.com/unixfox/opencode-claude-code-plugin). Published as `@khalilgharbaoui/opencode-claude-code-plugin` on npm.
+> Maintained fork of [`unixfox/opencode-claude-code-plugin`](https://github.com/unixfox/opencode-claude-code-plugin), via [`khalilgharbaoui/opencode-claude-code-plugin`](https://github.com/khalilgharbaoui/opencode-claude-code-plugin).
 
 ---
 
 ## OpenCode V2 support (this fork)
 
-The npm release targets OpenCode V1 and does not load under OpenCode V2. This fork adds a V2 adapter (`src/v2.ts`, tested in `test-v2-adapter.ts`) that registers the same model registry through the V2 plugin API (`ctx.provider.transform` plus `ctx.aisdk` hooks) and serves the `aisdk:file://` factory contract, so the 17k lines of CLI-driving core run unchanged.
+The upstream release targets OpenCode V1 and does not load under OpenCode V2. This fork adds a V2 adapter (`src/v2.ts`, tested in `test-v2-adapter.ts`) that registers the same model registry through the V2 plugin API (`ctx.provider.transform` plus `ctx.aisdk` hooks) and serves the `aisdk:file://` factory contract, so the 17k lines of CLI-driving core run unchanged.
 
 ```jsonc
 {
@@ -31,7 +29,7 @@ The npm release targets OpenCode V1 and does not load under OpenCode V2. This fo
 
 Notes:
 
-- Build first (`npm run build`): `v2-plugin/` re-exports the `dist/v2.js` bundle, and V2 only loads plugin paths that are directories.
+- Build first so `dist/v2.js` exists: `v2-plugin/` re-exports that bundle, and V2 only loads plugin paths that are directories.
 - Every key the factory understands can be set under `options`; see the [options reference](#options-reference). These arrive as provider settings, so per-request overrides are not re-read without a restart.
 - MVP scope: default account only, no `/btw` or doctor commands, no multi-account expansion. The interactive (PTY) transport is core code and follows the same `interactive` option.
 
@@ -61,7 +59,7 @@ opencode reads a global config at `~/.config/opencode/opencode.json` (or `$XDG_C
 }
 ```
 
-That package spec is the whole install. Do **not** `npm install` the package yourself: opencode resolves and caches plugin packages on its own. You do not need a `provider` block either, unless you want to change one of the [options](#options-reference).
+That package spec is the whole install. Do **not** install the package yourself: opencode resolves and caches plugin packages on its own. You do not need a `provider` block either, unless you want to change one of the [options](#options-reference).
 
 ### 3. Restart opencode and verify
 
@@ -1210,15 +1208,6 @@ src/
 ```
 
 For runtime gotchas, the release flow, and the compatibility audit (last taken against **opencode 1.18.29**), see [`AGENTS.md`](./AGENTS.md).
-
-## Publishing (maintainers)
-
-```bash
-npm version patch   # or minor/major — bumps package.json + creates the tag
-git push origin master --follow-tags
-```
-
-The GitHub Actions workflow at `.github/workflows/publish.yml` runs `npm publish --access public` on tag push. Since v0.6.2 it authenticates with **npm trusted publishing (OIDC)**, not a token: the job holds `id-token: write`, upgrades npm first because OIDC needs npm 11.5.1 or newer, and passes no `NODE_AUTH_TOKEN`. The trusted publisher is configured on npmjs.com against this repository and the `publish.yml` workflow filename, so a publish that fails on auth means that configuration, not an expired secret. There is no `NPM_TOKEN` in the workflow.
 
 ## Star History
 
