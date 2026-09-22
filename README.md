@@ -12,6 +12,31 @@ Use Claude models inside [opencode](https://opencode.ai) by driving the official
 
 ---
 
+## OpenCode V2 support (this fork)
+
+The npm release targets OpenCode V1 and does not load under OpenCode V2. This fork adds a V2 adapter (`src/v2.ts`, tested in `test-v2-adapter.ts`) that registers the same model registry through the V2 plugin API (`ctx.provider.transform` plus `ctx.aisdk` hooks) and serves the `aisdk:file://` factory contract, so the 17k lines of CLI-driving core run unchanged.
+
+```jsonc
+{
+  "plugins": [
+    {
+      "package": "file:///path/to/checkout/v2-plugin",
+      "options": {
+        "cliPath": "claude"
+      }
+    }
+  ]
+}
+```
+
+Notes:
+
+- Build first (`npm run build`): `v2-plugin/` re-exports the `dist/v2.js` bundle, and V2 only loads plugin paths that are directories.
+- Every key the factory understands can be set under `options`; see the [options reference](#options-reference). These arrive as provider settings, so per-request overrides are not re-read without a restart.
+- MVP scope: default account only, no `/btw` or doctor commands, no multi-account expansion. The interactive (PTY) transport is core code and follows the same `interactive` option.
+
+---
+
 ## Quickstart
 
 ### 1. Install and log in the Claude Code CLI
