@@ -1,4 +1,4 @@
-# @khalilgharbaoui/opencode-claude-code-plugin
+# opencode-claude-code-plugin (OpenCode V2 fork)
 
 [![npm](https://img.shields.io/npm/v/@khalilgharbaoui/opencode-claude-code-plugin.svg)](https://www.npmjs.com/package/@khalilgharbaoui/opencode-claude-code-plugin)
 
