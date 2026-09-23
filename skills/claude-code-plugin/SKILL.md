@@ -115,6 +115,7 @@ Defaults below describe normal headless opencode use when the key is absent.
 | `logging` | object | see below | File and TUI logging policy. |
 | `name` | string | unset | Low-level `createClaudeCode()` provider identity fallback after `providerID`, not the opencode display-name setting. Display name lives at `provider.<id>.name`; account expansion supplies its own label. Leave this option unset. |
 | `providerID` | string | derived | Config hook writes the actual provider id (`claude-code` or `claude-code-work`). Do not override manually. |
+| `hostApi` | `"v1"` \| `"v2"` | derived | Which opencode major created the model, which decides the tool names its stream uses (`bash` on 1.x, `shell` on 2.x). Set only by the opencode 2 entrypoint. Do not set it: forcing `"v2"` under opencode 1.x makes every proxied tool call fail as an unavailable tool. |
 | `account` | string | unset/derived | Account expansion supplies this to generate its runtime wrapper. Prefer `accounts` over hand-wiring it. |
 | `configDir` | string | unset/derived | Generated account directory, also used for interactive env/transcript lookup. Not a standalone headless auth switch: headless account selection comes from the wrapper's env. Do not hand-wire it. |
 
@@ -175,6 +176,19 @@ their secret values. Arbitrary MCP `{env:NAME}` placeholders are outside this li
 ```
 
 Everything else is optional. Models appear in the picker without extra config.
+
+### opencode 2
+
+Same package, same config. 2.x's native key is `plugins` (plural), but it still reads 1.x's `plugin` key, so an existing install needs no edit:
+
+```json
+{ "plugins": ["@khalilgharbaoui/opencode-claude-code-plugin"] }
+```
+
+- Check the major first with `opencode --version`. `plugin` works on both majors (measured: 2.0.11 loaded a plugin listed under `plugin`); `plugins` is read by 2.x only.
+- `provider.claude-code.options` still works on 2.x; `provider.claude-code.settings` is the native spelling and wins where both are set. `accounts` may also sit in the plugin entry's own `options`.
+- A local checkout is loaded by pointing `plugins` at its **`dist`** directory, never the repository root.
+- Known 2.x differences: `/btw` is answered after the running turn rather than inside it, and there is no todo panel (2.x has no `todowrite` tool). Do not set `hostApi`; the 2.x entrypoint sets it, and forcing it on 1.x breaks every proxied tool call.
 
 ### Two accounts
 

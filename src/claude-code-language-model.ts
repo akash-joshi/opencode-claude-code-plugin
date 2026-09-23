@@ -15,6 +15,7 @@ import type {
   ReasoningEffort,
 } from "./types.js"
 import { mapTool, isWebSearchTool, isWebSearchHandledByCli } from "./tool-mapping.js"
+import { createHostToolPartTranslator, translateStreamForHost } from "./host-tools.js"
 import { applyTaskCreateToolResult } from "./todo-ledger.js"
 import {
   getClaudeUserMessage,
@@ -210,6 +211,39 @@ export function resolveSessionAffinity(
     if (typeof sid === "string" && sid.length > 0) return sid
   }
   return "default"
+}
+
+/**
+ * The opencode agent this call runs for, which is how compaction and title
+ * calls are told apart from ordinary turns.
+ *
+ *   1. `opencodeAgent` in providerOptions, written by V1's `chat.params`
+ *      hook. Checked first so opencode 1.x behaves exactly as it always has.
+ *   2. The `x-opencode-agent` request header, written by the V2 entrypoint's
+ *      `model.request` hook (src/v2.ts), which can set headers but not
+ *      provider options.
+ */
+export function resolveOpencodeAgent(
+  headers: Record<string, string | undefined> | undefined,
+  providerOptions: Record<string, unknown> | undefined,
+  providerKey: string,
+): string | undefined {
+  if (providerOptions) {
+    const bag =
+      (providerOptions as any)[providerKey] ??
+      (providerOptions as any)["claude-code"]
+    const agent = bag?.opencodeAgent
+    if (typeof agent === "string") return agent
+  }
+  if (headers) {
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === "x-opencode-agent") {
+        const value = headers[key]
+        if (typeof value === "string" && value.length > 0) return value
+      }
+    }
+  }
+  return undefined
 }
 
 /**
@@ -1027,6 +1061,23 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
     }
   }
 
+  /**
+   * Whether this call only names the session, which gets the synthetic stub
+   * rather than a `claude` spawn. opencode 1.x sends a title request with no
+   * tools, and that is the whole test there. opencode 2 sends its tool set
+   * along with it (measured on 2.0.11: `scope: "tools"`, agent `title`), so
+   * every new V2 session paid for a second `claude` process just to title
+   * itself; for a V2 model the request kind, carried as the `title` agent,
+   * decides instead.
+   */
+  private isTitleRequest(
+    scope: "tools" | "no-tools",
+    options: LanguageModelV3CallOptions,
+  ): boolean {
+    if (scope === "no-tools") return true
+    return this.config.hostApi === "v2" && this.getOpencodeAgent(options) === "title"
+  }
+
   private requestScope(options: { tools?: unknown }): "tools" | "no-tools" {
     const tools = options?.tools
     if (Array.isArray(tools)) return "tools"
@@ -1554,22 +1605,18 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
     return valid.includes(effort) ? effort : undefined
   }
 
-  private getOpencodeAgent(
-    providerOptions?: LanguageModelV3CallOptions["providerOptions"],
-  ): string | undefined {
-    if (!providerOptions) return undefined
-    const ownKey = this.config.provider
-    const bag =
-      (providerOptions as any)[ownKey] ??
-      (providerOptions as any)["claude-code"]
-    const agent = bag?.opencodeAgent
-    return typeof agent === "string" ? agent : undefined
+  private getOpencodeAgent(options: LanguageModelV3CallOptions): string | undefined {
+    return resolveOpencodeAgent(
+      (options as any)?.headers as Record<string, string | undefined> | undefined,
+      options.providerOptions as Record<string, unknown> | undefined,
+      this.config.provider,
+    )
   }
 
   private isCompactionCall(
     options: LanguageModelV3CallOptions,
   ): boolean {
-    return this.getOpencodeAgent(options.providerOptions) === "compaction"
+    return this.getOpencodeAgent(options) === "compaction"
   }
 
   /**
@@ -1753,6 +1800,21 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
   async doGenerate(
     options: LanguageModelV3CallOptions,
   ): Promise<Awaited<ReturnType<LanguageModelV3["doGenerate"]>>> {
+    const result = await this.doGenerateForHost(options)
+    if (this.config.hostApi !== "v2") return result
+    const translate = createHostToolPartTranslator("v2")
+    return {
+      ...result,
+      content: result.content.flatMap((part) => {
+        const next = translate(part as any)
+        return next ? [next as unknown as LanguageModelV3Content] : []
+      }),
+    }
+  }
+
+  private async doGenerateForHost(
+    options: LanguageModelV3CallOptions,
+  ): Promise<Awaited<ReturnType<LanguageModelV3["doGenerate"]>>> {
     if (!this.isCompactionCall(options) && this.requestScope(options as any) !== "no-tools" && parseSideQuestion(options.prompt)) {
       return this.doGenerateViaStream(options)
     }
@@ -1764,18 +1826,18 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
     // (see agent-models.ts). The session key must carry the effective model or
     // an overridden agent shares a claude process with its caller.
     const effectiveModelId = resolveAgentModel(
-      this.getOpencodeAgent(options.providerOptions),
+      this.getOpencodeAgent(options),
       this.modelId,
     )
     const reasoningEffort = resolveAgentEffort(
-      this.getOpencodeAgent(options.providerOptions),
+      this.getOpencodeAgent(options),
       this.getReasoningEffort(options.providerOptions),
     ) as ReasoningEffort | undefined
     // Keep effort invalidation inside one agent/provider, even when callers
     // share a model and opencode session (for example switching agents).
     const baseKey = sessionKey(
       cwd,
-      `${effectiveModelId}::${scope}::${affinity}::context=${JSON.stringify([this.config.provider, this.getOpencodeAgent(options.providerOptions) ?? null])}`,
+      `${effectiveModelId}::${scope}::${affinity}::context=${JSON.stringify([this.config.provider, this.getOpencodeAgent(options) ?? null])}`,
     )
     const sk = effortSessionKey(baseKey, reasoningEffort)
 
@@ -1803,10 +1865,10 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
       return this.doGenerateViaStream(options)
     }
 
-    if (scope === "no-tools") {
+    if (this.isTitleRequest(scope, options)) {
       log.info("doGenerate no-tools title stub", {
         compactionMode,
-        opencodeAgent: this.getOpencodeAgent(options.providerOptions),
+        opencodeAgent: this.getOpencodeAgent(options),
         providerOptionsKeys: options.providerOptions
           ? Object.keys(options.providerOptions)
           : [],
@@ -2341,7 +2403,22 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
     }
   }
 
+  /**
+   * Tool parts leave in opencode 1.x's vocabulary; on opencode 2.x they are
+   * renamed at this one edge (src/host-tools.ts). On V1 the stream is
+   * returned untouched.
+   */
   async doStream(
+    options: LanguageModelV3CallOptions,
+  ): Promise<Awaited<ReturnType<LanguageModelV3["doStream"]>>> {
+    const result = await this.doStreamForHost(options)
+    return {
+      ...result,
+      stream: translateStreamForHost(result.stream as any, this.config.hostApi ?? "v1") as any,
+    }
+  }
+
+  private async doStreamForHost(
     options: LanguageModelV3CallOptions,
   ): Promise<Awaited<ReturnType<LanguageModelV3["doStream"]>>> {
     const warnings: SharedV3Warning[] = []
@@ -2355,19 +2432,19 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
     const effectiveModelId = compactionMode
       ? this.resolveCompactionModel()
       : resolveAgentModel(
-          this.getOpencodeAgent(options.providerOptions),
+          this.getOpencodeAgent(options),
           this.modelId,
         )
     // Compaction skips request/agent effort overrides; other calls key on it.
     const reasoningEffort = compactionMode
       ? undefined
       : (resolveAgentEffort(
-          this.getOpencodeAgent(options.providerOptions),
+          this.getOpencodeAgent(options),
           this.getReasoningEffort(options.providerOptions),
         ) as ReasoningEffort | undefined)
     const baseKey = sessionKey(
       cwd,
-      `${effectiveModelId}::${scope}::${affinity}::context=${JSON.stringify([this.config.provider, this.getOpencodeAgent(options.providerOptions) ?? null])}`,
+      `${effectiveModelId}::${scope}::${affinity}::context=${JSON.stringify([this.config.provider, this.getOpencodeAgent(options) ?? null])}`,
     )
     const sk = compactionMode
       ? sessionKey(cwd, `${effectiveModelId}::compaction::${affinity}`)
@@ -2513,10 +2590,10 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
       return { stream, request: { body: { text: aside.question } } }
     }
 
-    if (scope === "no-tools" && !compactionMode) {
+    if (this.isTitleRequest(scope, options) && !compactionMode) {
       log.info("doStream no-tools title stub", {
         compactionMode,
-        opencodeAgent: this.getOpencodeAgent(options.providerOptions),
+        opencodeAgent: this.getOpencodeAgent(options),
         providerOptionsKeys: options.providerOptions
           ? Object.keys(options.providerOptions)
           : [],
@@ -2804,7 +2881,7 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
       proxyTools: resolvedProxy?.map((t) => t.name) ?? null,
       compactionMode,
       scope,
-      opencodeAgent: this.getOpencodeAgent(options.providerOptions),
+      opencodeAgent: this.getOpencodeAgent(options),
       providerOptionsKeys: options.providerOptions
         ? Object.keys(options.providerOptions)
         : [],
