@@ -74,7 +74,16 @@
 Questions the maintainer still owes an answer on. Written here the turn they are
 raised, so they survive context compaction; removed when answered, done or dropped.
 
-No pending questions.
+- 2026-09-23: global opencode plugin cleanup (maintainer's own config, not this repo).
+  Done: simple-memory, gemini-auth, grok-auth and quota removed from
+  `~/.config/opencode/opencode.json`, and quota from `tui.json` and `tui.jsonc`;
+  backups are `*.bak-20260923-195510` beside them. simple-memory had nothing to port:
+  its only call ever (2026-04-14) failed with ENOENT and no `.opencode/memory` exists.
+  Still open: (1) `opencode-local-ollama`, which the maintainer asked to discuss last:
+  264 replies, all 2026-03-25 to 2026-04-25, on 35B models no longer installed; the
+  Ollama server is running and has a model loaded by something else right now. (2) The
+  `lmstudio` provider block: 9 replies on 2026-04-26 only, and LM Studio is not
+  installed. (3) Whether to delete the Google and xAI login tokens those plugins left.
 
 ## Parked
 
