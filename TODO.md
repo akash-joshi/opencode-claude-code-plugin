@@ -107,6 +107,13 @@ raised, so they survive context compaction; removed when answered, done or dropp
   it is theirs to run. Low expectation: the 0.27.0 publish itself rewrote the record
   and still dropped the versions. If the `next` write does not bring the versions back,
   submit the drafted ticket at npmjs.com/support.
+  00:13 local: the maintainer ran the `next` write. Result: the tag store answers
+  `{latest: 0.27.0, next: 0.27.0}` and the record moved to `_rev 84`, but it now says
+  `{next: 0.27.0, latest: 0.24.0}` and still lists no version after 0.24.0, so it is
+  inconsistent with itself. Confirmed npm-side. Real install into an empty folder with
+  npm 11.9.0: by name installs 0.24.0, `@0.27.0` fails with ETARGET. Next step: the
+  maintainer submits the ticket (draft updated with all of this). The `next` tag is
+  harmless and can stay.
 - 2026-09-23: branch `disable-thinking` (local and on origin) holds an unmerged
   `disableThinking` provider option from 2026-05-29. Kept during branch cleanup because
   it is unique work. Claude Code's own `CLAUDE_CODE_DISABLE_THINKING`, which the plugin
