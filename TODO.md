@@ -101,6 +101,20 @@ raised, so they survive context compaction; removed when answered, done or dropp
   cannot load on 2.x (it exports no `setup`), so a collision needs the live check.
   The release also needs npm trusted publishing set up: the repo's v0.1.1 publish run
   failed and it has no `npm_token` secret.
+  Update, later the same day: **collision check done live**, no collision on either
+  major. In the V2 sandbox (2.0.11, `opencode serve`, `GET /api/model` after discovery)
+  the built-in provider listed `ollama/llama3.2:1b` and `ollama/qwen3.8:latest`, and the
+  list was identical with local-ollama configured, because opencode 2 refuses to load
+  it ("Plugin must export a default definition with an id and an effect or setup
+  function", one WARN in its log); 1.x has no built-in `ollama` provider. **Release
+  prep done** as local-ollama PR #1 (`release-0.1.2`: OIDC publishing, README
+  "opencode 2" note, 0.1.2, local checks all exit 0, 59 tests). Root cause of the
+  failed v0.1.1 run: the publish job's token secret does not exist (build job was
+  green; the run's logs have expired, so npm's own error line is not available).
+  **Waiting on the maintainer**: add the npm trusted publisher (GitHub Actions, user
+  `khalilgharbaoui`, repo `opencode-local-ollama`, workflow `npm-publish.yml`,
+  environment blank), then merge PR #1 and create release `v0.1.2` in the GitHub UI.
+  Optional: retire the stale `v0.1.1` GitHub release, which never reached npm.
 - 2026-09-23: **done** (v0.26.2). A proxied call waiting on an opencode permission
   prompt was rejected at the plugin's 10-minute deadline, and the late approval then
   cancelled Claude's next call ("rejected" though nobody rejected anything). The
