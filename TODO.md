@@ -87,7 +87,19 @@ Nothing queued here; the working backlog is the vault note
 Questions the maintainer still owes an answer on. Written here the turn they are
 raised, so they survive context compaction; removed when answered, done or dropped.
 
-No pending questions.
+- 2026-09-23: **npm's package record for this plugin stopped taking new versions after
+  0.24.0.** Measured at 20:5x: the aggregate packument (what `npm install` and opencode
+  read) says `latest: 0.24.0` and lists no 0.25.0 to 0.26.3, even uncached
+  (`?write=true`, `_rev 82-624ecd15...`), while each version document answers 200 and
+  the separate dist-tags endpoint says `latest: 0.26.3`. npm status: operational. Not a
+  size limit (262 KB). So `npm install` / opencode `@latest` gets 0.24.0 (false failover
+  forms, a form that cannot switch) and `@0.26.3` fails as not found. The maintainer is
+  unaffected (`file://` checkout). Every publish itself succeeded. Choice pending:
+  (a) the maintainer runs `npm login` then `npm dist-tag add
+  @khalilgharbaoui/opencode-claude-code-plugin@0.26.3 latest`, which writes the record
+  and may re-sync it; (b) open an npm support ticket with the evidence above; (c) both.
+  Also worth adding: `npm --version` printed in `publish.yml`, since CI installs
+  `npm@latest` and the working 0.24.0 run cannot be compared.
 
 ## Parked
 
@@ -104,7 +116,7 @@ No pending questions.
 ## In progress
 
 - 2026-09-23: opencode 2, the checks that were not possible before release. (1) Install
-  by npm name: `plugins: ["@khalilgharbaoui/opencode-claude-code-plugin@0.26.0"]` failed
+  by npm name (blocked by the npm record problem under "Open from you", not by lag): `plugins: ["@khalilgharbaoui/opencode-claude-code-plugin@0.26.0"]` failed
   with `NpmInstallFail` right after publishing, because the registry's aggregate
   packument still listed `latest: 0.24.0`; retry once it lists 0.26.0. (2) Account
   failover and the plan-mode form on V2, which need a real usage limit and a headless
