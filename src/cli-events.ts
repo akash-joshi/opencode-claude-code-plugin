@@ -407,6 +407,55 @@ export function reportCompactBoundary(msg: ClaudeStreamMessage): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// conversation_reset
+// ---------------------------------------------------------------------------
+
+export const CONVERSATION_RESET_MARKER = "▌ **claude code reset:**"
+
+export interface ConversationReset {
+  newConversationId: string
+  /** The session the reset ended; the next `system/init` carries the new one. */
+  previousSessionId?: string
+}
+
+/**
+ * Claude Code threw its conversation away and started a new one. Schema from
+ * Claude Code 2.1.280: `{type: "conversation_reset", new_conversation_id,
+ * uuid, session_id}`, emitted by `/clear`, plan-mode exit and fresh-session
+ * flows. Measured the same day by driving the real CLI: an ordinary turn emits
+ * none, and `/clear` emits one carrying the OLD `session_id`, followed by a
+ * `system/init` with a new session id that differs from `new_conversation_id`,
+ * after which Claude could not recall the conversation. A frame without a
+ * string `new_conversation_id` is ignored, as the CLI's own adapter drops it.
+ */
+export function parseConversationReset(msg: ClaudeStreamMessage): ConversationReset | null {
+  if (msg.type !== "conversation_reset") return null
+  const newConversationId = str(msg.new_conversation_id)
+  if (!newConversationId) return null
+  return { newConversationId, previousSessionId: str(msg.session_id) }
+}
+
+/**
+ * Deliberately a note and not a history replay: every known trigger is a
+ * clear the user or Claude Code asked for, and replaying opencode's transcript
+ * on the next message would silently undo it.
+ */
+export function formatConversationResetNote(): string {
+  return `\n${CONVERSATION_RESET_MARKER} Claude Code cleared its conversation, so from here on Claude does not see the earlier messages this chat still shows. Start a new opencode session for a clean slate, or restate what matters.\n`
+}
+
+/** Logs the reset and returns the transcript note, or null when not one. */
+export function reportConversationReset(msg: ClaudeStreamMessage): string | null {
+  const reset = parseConversationReset(msg)
+  if (!reset) return null
+  log.notice("claude code reset its conversation", {
+    newConversationId: reset.newConversationId,
+    previousSessionId: reset.previousSessionId ?? null,
+  })
+  return formatConversationResetNote()
+}
+
+// ---------------------------------------------------------------------------
 // result subtype
 // ---------------------------------------------------------------------------
 

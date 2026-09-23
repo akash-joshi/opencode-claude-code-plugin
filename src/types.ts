@@ -523,6 +523,9 @@ export interface ClaudeStreamMessage {
    */
   error?: string
 
+  /** On a `conversation_reset`: the conversation Claude Code started. */
+  new_conversation_id?: string
+
   message?: {
     role?: string
     model?: string

@@ -31,6 +31,7 @@ import {
   isRateLimitRejected,
   parseRateLimitEvent,
   reportCompactBoundary,
+  reportConversationReset,
   reportRateLimitEvent,
   reportSystemInit,
 } from "./cli-events.js"
@@ -4043,6 +4044,25 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
                 controller.enqueue({ type: "text-delta", id: startTextBlock(), delta: note })
                 endTextBlock()
               }
+            }
+
+            // Claude Code started a new conversation (`/clear`, plan-mode
+            // exit). Content-block indices restart with it, so nothing keyed
+            // by index may survive: a stale `toolCallMap` entry re-emits a
+            // finished tool call on the new conversation's first block, the
+            // failure fixed on 2026-09-06. The Claude session id needs nothing
+            // here; the `system/init` that follows carries the new one.
+            if (msg.type === "conversation_reset") {
+              const note = reportConversationReset(msg)
+              if (note) {
+                toolCallMap.clear()
+                reasoningIds.clear()
+                reasoningStarted.clear()
+                textBlockIndices.clear()
+                controller.enqueue({ type: "text-delta", id: startTextBlock(), delta: note })
+                endTextBlock()
+              }
+              return
             }
 
             // Not returned from: the reply's own text still renders below.
