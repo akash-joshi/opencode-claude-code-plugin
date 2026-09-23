@@ -91,6 +91,27 @@ raised, so they survive context compaction; removed when answered, done or dropp
   with a "built in on opencode 2" README note, deprecate on npm, or leave it. (2) The
   `lmstudio` provider block: 9 replies on 2026-04-26 only, and LM Studio is not
   installed. (3) Whether to delete the Google and xAI login tokens those plugins left.
+  Update, same day: the maintainer decided no opencode 2 port, keep local-ollama in the
+  config, and "make sure it won't collide"; delete the Google and xAI tokens (done:
+  `google` and `xai-oauth` removed from `~/.local/share/opencode/auth.json`, mode kept
+  0600); and publish 0.1.1 through an implementor task. That task never ran: background
+  subagents are disabled here, and the foreground retry was rejected by the deadline
+  bug below. The collision check was inconclusive: with both loaded in the V2 sandbox,
+  `opencode models` listed no `ollama` models at all. By reading the code a 1.x plugin
+  cannot load on 2.x (it exports no `setup`), so a collision needs the live check.
+  The release also needs npm trusted publishing set up: the repo's v0.1.1 publish run
+  failed and it has no `npm_token` secret.
+- 2026-09-23: a proxied call that waits on an opencode permission prompt outlives the
+  plugin's 10-minute deadline. Measured: a `bash` call queued 18:45:01, the prompt was
+  answered after the deadline fired, the result arrived at 18:55:35 as text, and the
+  next call (`task`) was rejected as orphaned, so the model reported "rejected" though
+  nobody rejected anything. Candidate fix: at the deadline, extend while
+  `settleSessionRunState` says the session is busy. Not started.
+- 2026-09-23: the `appical` Claude Code login expired (CLI: "Failed to authenticate:
+  OAuth session expired and could not be refreshed"; `claude-appical auth status` says
+  `loggedIn: false`). Every appical turn from 19:00 failed in about 40 ms; `default` is
+  fine. The maintainer has to log in again. Offered: turn that error into a note naming
+  the account and the login command, and possibly offer the account picker for it.
 
 ## Parked
 
