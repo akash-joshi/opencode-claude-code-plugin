@@ -677,7 +677,9 @@ The same events are also what let a legitimately long call complete, which is th
 
 ### Per-tool proxy timeouts
 
-Deadlines still exist, as an explicit backstop rather than the mechanism that decides when a call is over. If a tool with one has not been resolved within that many milliseconds, the call is rejected and Claude receives a timeout error. Resolved per tool, most-specific layer winning:
+Deadlines still exist, as an explicit backstop rather than the mechanism that decides when a call is over. If a tool with one has not been resolved within that many milliseconds, the call is rejected and Claude receives a timeout error.
+
+A deadline does not count time opencode is still spending on the call. When it passes, the plugin asks opencode whether the session is still busy. If it is (a permission prompt waiting for your answer, or the tool itself still running), the call keeps waiting and is checked again every minute. The deadline only applies once opencode is idle, or when opencode cannot be asked. Before this, answering a permission prompt after ten minutes meant Claude had already been told the command timed out. Your late approval then cancelled Claude's next action, which it reported as you rejecting it. Resolved per tool, most-specific layer winning:
 
 1. flat default — 10 min (matches Claude CLI's own Bash ceiling)
 2. per-tool default: **`task` / `task_batch`: none**, **`question`: 30 min**, everything else: 10 min

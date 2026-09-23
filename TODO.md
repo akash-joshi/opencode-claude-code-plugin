@@ -101,12 +101,16 @@ raised, so they survive context compaction; removed when answered, done or dropp
   cannot load on 2.x (it exports no `setup`), so a collision needs the live check.
   The release also needs npm trusted publishing set up: the repo's v0.1.1 publish run
   failed and it has no `npm_token` secret.
-- 2026-09-23: a proxied call that waits on an opencode permission prompt outlives the
-  plugin's 10-minute deadline. Measured: a `bash` call queued 18:45:01, the prompt was
-  answered after the deadline fired, the result arrived at 18:55:35 as text, and the
-  next call (`task`) was rejected as orphaned, so the model reported "rejected" though
-  nobody rejected anything. Candidate fix: at the deadline, extend while
-  `settleSessionRunState` says the session is busy. Not started.
+- 2026-09-23: **done** (v0.26.2). A proxied call waiting on an opencode permission
+  prompt was rejected at the plugin's 10-minute deadline, and the late approval then
+  cancelled Claude's next call ("rejected" though nobody rejected anything). The
+  deadline now extends while opencode reports the session busy. AGENTS.md, second
+  runtime gotcha.
+- 2026-09-23: **done** (v0.26.2), reported by the maintainer as "the switch form does
+  not work failed from day 1". It never switched: opencode returns the pick inside a
+  sentence the parser only recognised for the plan-approval question. Also fixed: an
+  answer after an opencode restart, and the answer leaking to Claude as text on the
+  next turn. AGENTS.md, third runtime gotcha. Still not tried against a real limit.
 - 2026-09-23: the `appical` Claude Code login expired (CLI: "Failed to authenticate:
   OAuth session expired and could not be refreshed"; `claude-appical auth status` says
   `loggedIn: false`). Every appical turn from 19:00 failed in about 40 ms; `default` is

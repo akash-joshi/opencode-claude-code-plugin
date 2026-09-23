@@ -71,6 +71,7 @@ import {
   fetchSessionParentId,
   type OpencodeToolListItem,
   resolveSpawnCwdForSession,
+  fetchSessionRunState,
   settleSessionRunState,
 } from "./runtime-status.js"
 import {
@@ -96,6 +97,7 @@ import {
   sessionKey,
   effortSessionKey,
   invalidateOtherEffortSessions,
+  describeSessionKey,
 } from "./session-manager.js"
 import { spawnInteractiveProcess } from "./claude-session-wrapper.js"
 import {
@@ -120,6 +122,7 @@ import {
   taskBatchTasks,
   taskBatchChildToolCallId,
   formatTaskBatchResults,
+  setProxyDeadlineGuard,
   type McpProxyToolResolution,
   type ModelToolEntry,
   type ProxyMcpServer,
@@ -129,6 +132,7 @@ import {
   type ProxyToolResult,
 } from "./proxy-mcp.js"
 import {
+  findPendingProxyCall,
   getPendingProxyCalls,
   isPendingProxyCallChannelClosed,
   markPendingProxyCallEmitted,
@@ -144,6 +148,23 @@ import { unlink } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
 import { randomUUID } from "node:crypto"
 import { dirname, join } from "node:path"
+
+/**
+ * Whether opencode is still serving a proxied call whose deadline just passed.
+ * Only a call opencode was actually handed (`emitted`), in a session opencode
+ * positively reports `busy`, is kept: that is a permission prompt still open
+ * or the tool itself still running. Anything else, including `unknown` (no
+ * SDK client, no status route, the no-affinity `default` session), ends at
+ * the deadline exactly as before.
+ */
+export async function isProxyCallStillServed(callId: string): Promise<boolean> {
+  const pending = findPendingProxyCall(callId)
+  if (!pending || pending.emitted !== true) return false
+  const session = describeSessionKey(pending.sessionKey).session
+  return (await fetchSessionRunState(session)) === "busy"
+}
+
+setProxyDeadlineGuard(({ callId }) => isProxyCallStillServed(callId))
 
 /**
  * Default model used for opencode `/compact`. Haiku 4.5 is fast

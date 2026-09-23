@@ -343,8 +343,9 @@ Names below become `mcp__opencode_proxy__<name>`; input config is case-insensiti
 A proxied call is held open until an event ends it, and the plugin listens to the
 `claude` process, the stream and the control protocol for those events rather than
 inferring failure from elapsed time: opencode's result resolves the call; an abort
-interrupts the CLI and rejects the turn's pending calls, even when it lands while
-opencode is running the tool; the next user message rejects what the previous turn left pending
+interrupts the CLI and rejects the turn's pending calls, unless opencode still reports
+the session busy (opencode 1.18 aborts the signal of every tool step while it runs the
+tool, so busy means the call is being served, not refused); the next user message rejects what the previous turn left pending
 and tells the CLI; the process exiting, the chat being deleted, or opencode exiting
 rejects the rest. That is why `task` and `task_batch` carry no default deadline and a
 subagent runs to completion. Three timers remain and are distinct from that: the
@@ -352,7 +353,11 @@ optional per-tool deadlines above (a backstop the user chooses), the start and
 inactivity watchdogs (for a process that is alive but silent, which emits nothing to
 listen to; a CLI parked in a proxied call is exempt), and the connection keepalives
 (SSE comments or JSON whitespace every 15 s, so the CLI's HTTP client does not give up
-on a long call; they never extend a deadline). Do not present a raised deadline as the
+on a long call; they never extend a deadline). A deadline that passes while opencode
+still reports the session busy (a permission prompt the user has not answered, or the
+tool still running) does not end the call: it logs `proxy call past its deadline, but
+opencode is still serving it; waiting` at WARN once and is rechecked every minute. So an
+unanswered permission prompt is not a reason to raise `proxyToolTimeoutMs`. Do not present a raised deadline as the
 fix for a long subagent; the default already waits for it. A deadline-free call is not
 silent while it waits: it logs `proxy call still waiting, no deadline` at WARN after
 five minutes and every five minutes after, with tool, call id and elapsed time. That
