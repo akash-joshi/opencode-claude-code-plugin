@@ -98,20 +98,18 @@ raised, so they survive context compaction; removed when answered, done or dropp
   (a) the maintainer runs `npm login` then `npm dist-tag add
   @khalilgharbaoui/opencode-claude-code-plugin@0.26.3 latest`, which writes the record
   and may re-sync it; (b) open an npm support ticket with the evidence above; (c) both.
-  Also worth adding: `npm --version` printed in `publish.yml`, since CI installs
-  `npm@latest` and the working 0.24.0 run cannot be compared.
+  `publish.yml` now prints `npm --version` and warns on the run when the record does
+  not list the release. A support ticket is drafted locally at
+  `.opencode/npm-support-ticket.md`. Waiting on the maintainer for (a): `npm login`
+  then the `dist-tag add` above; (b) only if (a) does not re-sync it.
+- 2026-09-23: branch `disable-thinking` (local and on origin) holds an unmerged
+  `disableThinking` provider option from 2026-05-29. Kept during branch cleanup because
+  it is unique work. Claude Code's own `CLAUDE_CODE_DISABLE_THINKING`, which the plugin
+  already respects, may make it redundant. Keep, finish, or drop?
 
 ## Parked
 
-- 2026-09-23: the skill-bridge native-dedup work (expanded discovery roots,
-  `bridgeSkipNativeSkills`, and the README/SKILL.md/AGENTS.md copy that goes with it)
-  was parked mid-flight on branch `skill-bridge-native-dedup`, commit `50df301`, so
-  master could be clean for the V2 lane. It is 9 files and roughly 830 lines, it is
-  **not gated** (no typecheck, test or build run since the last edits), and AGENTS.md
-  already describes it as offline-verified only with no live Claude session behind it.
-  To resume: `git checkout skill-bridge-native-dedup`, run the full gate, then open a PR.
-  Nothing is lost by leaving it there, but note the maintainer's local `file://` install
-  builds from the working tree, so master builds no longer carry these changes.
+Nothing parked.
 
 ## In progress
 
@@ -124,6 +122,16 @@ raised, so they survive context compaction; removed when answered, done or dropp
 
 ## Done
 
+- 2026-09-23: **done** (v0.27.0, PR #45): the parked skill-bridge work. Merged with
+  master, em dashes removed, 720 tests, measured on the real machine (14 bridged, 100
+  skipped as already loaded by Claude, `herdr` answered by Claude's own copy) and
+  live-verified: a turn loaded `git-archeology`, reachable only through the new roots.
+- 2026-09-23: **done** (v0.27.0): `conversation_reset` is announced with a note and
+  clears the index-keyed stream bookkeeping. History is deliberately not replayed.
+- 2026-09-23: **done**: branch cleanup (seven merged local branches, two stale remote
+  ones) and the unused `lmstudio` provider block removed from the global config
+  (backup `opencode.json.bak-20260923-232635`). `publish.yml` now prints its npm
+  version and warns when npm does not list a fresh release.
 - 2026-09-23: **done**, shipped in v0.26.1. Proxied tool calls reached the model as
   rejected while the tool actually ran: opencode 1.18.32 aborts the provider signal of
   every step that ends in tool calls, and the plugin read that as the operator pressing
