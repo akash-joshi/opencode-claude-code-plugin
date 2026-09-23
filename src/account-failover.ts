@@ -294,6 +294,8 @@ interface PendingFailoverQuestion {
   sourceAccount: string
   candidates: string[]
   resetsAt?: number
+  /** The question as asked, needed to read opencode's answer sentence. */
+  question?: string
 }
 
 const pendingQuestions = new Map<string, PendingFailoverQuestion>()
@@ -335,18 +337,19 @@ export function createAccountFailoverQuestionCall(
   const resets = describeReset(input.resetsAt)
   const until = resets ?? "opencode restarts"
 
-  pendingQuestions.set(pendingKey(sessionKey, toolCallId), {
-    sourceAccount: source,
-    candidates: [...candidates],
-    resetsAt: input.resetsAt,
-  })
-
   const question = [
     `The Claude account "${source}" is out of usage`,
     input.window ? ` in ${input.window}` : "",
     resets ? `, which resets at ${resets}` : "",
     ". Continue this task on another configured account? Leaving this unanswered waits, at no cost.",
   ].join("")
+
+  pendingQuestions.set(pendingKey(sessionKey, toolCallId), {
+    sourceAccount: source,
+    candidates: [...candidates],
+    resetsAt: input.resetsAt,
+    question,
+  })
 
   return {
     toolCallId,
@@ -398,8 +401,14 @@ function classify(
       reason: String((output as { reason?: unknown }).reason ?? "question rejected"),
     }
   }
+  // A dismissed form reaches the model as a failed tool call ("The user
+  // dismissed this question"), not as an answer that happens to be unknown.
+  const outputType = part?.output?.type
+  if (outputType === "error-text" || outputType === "error-json") {
+    return { kind: "stop", reason: String(output ?? "the form was dismissed") }
+  }
 
-  const answers = collectAnswerStrings(output)
+  const answers = collectAnswerStrings(output, pending.question)
     .map((answer) => answer.trim())
     .filter(Boolean)
   if (answers.length === 0) return { kind: "stop", reason: "no answer" }
@@ -429,6 +438,14 @@ function classify(
 export function consumeAccountFailoverAnswer(
   sessionKey: string,
   prompt: Array<{ role: string; content?: unknown }>,
+  /**
+   * The form this model would offer now, for an answer whose form was asked
+   * by an earlier opencode process. The pending entry lives in memory, so a
+   * restart between the form and the answer lost it and the pick was replayed
+   * to Claude as stray text (measured 2026-09-23). Only the newest message is
+   * read with it, so an old answer further up the history never fires again.
+   */
+  fallback?: { sourceAccount: string; candidates: readonly string[] },
 ): AccountFailoverAnswer | null {
   for (let i = prompt.length - 1; i >= 0; i--) {
     const msg = prompt[i]
@@ -444,6 +461,25 @@ export function consumeAccountFailoverAnswer(
 
       pendingQuestions.delete(key)
       return classify(pending, part)
+    }
+  }
+
+  const last = prompt[prompt.length - 1]
+  if (fallback && fallback.candidates.length > 0 && Array.isArray(last?.content)) {
+    const orphan = (last.content as any[]).find(
+      (part) =>
+        part?.type === "tool-result" &&
+        typeof part.toolCallId === "string" &&
+        part.toolCallId.startsWith(ACCOUNT_FAILOVER_TOOL_CALL_PREFIX),
+    )
+    if (orphan) {
+      return classify(
+        {
+          sourceAccount: normalizeAccountName(fallback.sourceAccount || DEFAULT_ACCOUNT),
+          candidates: fallback.candidates.map((c) => normalizeAccountName(c)),
+        },
+        orphan,
+      )
     }
   }
   return null

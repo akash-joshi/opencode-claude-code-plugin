@@ -47,7 +47,7 @@ import {
 } from "./src/account-failover.js"
 import { _resetRateLimitReports, _resetSystemInitReports } from "./src/cli-events.js"
 import { createClaudeCode } from "./src/index.js"
-import { filterSideQuestionHistory } from "./src/message-builder.js"
+import { filterSideQuestionHistory, getClaudeUserMessage } from "./src/message-builder.js"
 import { setOpencodeClient } from "./src/runtime-status.js"
 import { deleteActiveProcess, sessionKey } from "./src/session-manager.js"
 
@@ -365,6 +365,122 @@ test("stop, a dismissal and unrecognised text all end the turn", () => {
     )
     assert.equal(result?.kind, "stop", `${label} should stop`)
   }
+})
+
+/**
+ * The sentence opencode's `question` tool actually returns, as read out of
+ * the 1.18.32 binary. Every failover pick arrived in this shape; the tests
+ * above feed bare labels, which is how the form shipped unable to switch.
+ */
+function opencodeAnswer(question: string, ...answers: string[]): string {
+  const value = answers.length > 0 ? answers.join(", ") : "Unanswered"
+  return `User has answered your questions: "${question}"="${value}". You can now continue with the user's answers in mind.`
+}
+
+test("opencode's own answer sentence switches, although the question has quotes", () => {
+  const call = createAccountFailoverQuestionCall("sk-real", {
+    sourceAccount: "appical",
+    candidates: ["default"],
+    resetsAt: 1_790_170_000,
+  })
+  const question = call.input.questions[0].question
+  // The failover question quotes the account, which is what defeats a naive split.
+  assert.match(question, /"appical"/)
+  assert.deepEqual(
+    consumeAccountFailoverAnswer(
+      "sk-real",
+      answer(call.toolCallId, { type: "text", value: opencodeAnswer(question, "default") }) as any,
+    ),
+    { kind: "switch", target: "default", sourceAccount: "appical", resetsAt: 1_790_170_000 },
+  )
+
+  // `stop`, a blank answer and a dismissal in their real shapes.
+  const stopCall = createAccountFailoverQuestionCall("sk-real-stop", {
+    sourceAccount: "appical",
+    candidates: ["default"],
+  })
+  const stopQuestion = stopCall.input.questions[0].question
+  assert.deepEqual(
+    consumeAccountFailoverAnswer(
+      "sk-real-stop",
+      answer(stopCall.toolCallId, { type: "text", value: opencodeAnswer(stopQuestion, "stop") }) as any,
+    ),
+    { kind: "stop", reason: "the operator chose to stop" },
+  )
+  const blankCall = createAccountFailoverQuestionCall("sk-real-blank", {
+    sourceAccount: "appical",
+    candidates: ["default"],
+  })
+  assert.deepEqual(
+    consumeAccountFailoverAnswer(
+      "sk-real-blank",
+      answer(blankCall.toolCallId, {
+        type: "text",
+        value: opencodeAnswer(blankCall.input.questions[0].question),
+      }) as any,
+    ),
+    { kind: "stop", reason: "no answer" },
+  )
+  const dismissCall = createAccountFailoverQuestionCall("sk-real-dismiss", {
+    sourceAccount: "appical",
+    candidates: ["default"],
+  })
+  assert.deepEqual(
+    consumeAccountFailoverAnswer(
+      "sk-real-dismiss",
+      answer(dismissCall.toolCallId, {
+        type: "error-text",
+        value: "The user dismissed this question",
+      }) as any,
+    ),
+    { kind: "stop", reason: "The user dismissed this question" },
+  )
+})
+
+test("an answer to a form asked before an opencode restart still switches", () => {
+  // No createAccountFailoverQuestionCall here: the process that asked is gone.
+  const toolCallId = `${ACCOUNT_FAILOVER_TOOL_CALL_PREFIX}fromlastrun`
+  const question =
+    'The Claude account "appical" is out of usage in the 5-hour window. Continue this task on another configured account? Leaving this unanswered waits, at no cost.'
+  const prompt = [
+    { role: "user", content: [{ type: "text", text: "build the thing" }] },
+    {
+      role: "assistant",
+      content: [{ type: "tool-call", toolCallId, toolName: "question", input: {} }],
+    },
+    ...answer(toolCallId, { type: "text", value: opencodeAnswer(question, "default") }),
+  ] as any
+  const fallback = { sourceAccount: "appical", candidates: ["default"] }
+  assert.deepEqual(consumeAccountFailoverAnswer("sk-restarted", prompt, fallback), {
+    kind: "switch",
+    target: "default",
+    sourceAccount: "appical",
+    resetsAt: undefined,
+  })
+  // An old answer further up is history, not this turn's answer.
+  const later = [...prompt, { role: "user", content: [{ type: "text", text: "next" }] }] as any
+  assert.equal(consumeAccountFailoverAnswer("sk-restarted", later, fallback), null)
+  // A single-account install offers nothing to fall back to.
+  assert.equal(
+    consumeAccountFailoverAnswer("sk-restarted", prompt, { sourceAccount: "appical", candidates: [] }),
+    null,
+  )
+})
+
+test("the form never reaches Claude as a stray tool result on the next turn", () => {
+  const toolCallId = `${ACCOUNT_FAILOVER_TOOL_CALL_PREFIX}staleform`
+  const prompt = [
+    { role: "user", content: [{ type: "text", text: "build the thing" }] },
+    {
+      role: "assistant",
+      content: [{ type: "tool-call", toolCallId, toolName: "question", input: {} }],
+    },
+    ...answer(toolCallId, { type: "error-text", value: "The user dismissed this question" }),
+    { role: "user", content: [{ type: "text", text: "try again please" }] },
+  ] as any
+  const envelope = getClaudeUserMessage(prompt, false, { cliToolCallIds: new Set() })
+  assert.doesNotMatch(envelope, /opencode_tool_result|dismissed this question/)
+  assert.match(envelope, /try again please/)
 })
 
 test("a tool-result for another call is not a failover answer", () => {
@@ -781,7 +897,10 @@ test("answering with the other account continues the task on it, replayed", asyn
                 type: "tool-result",
                 toolCallId: call.toolCallId,
                 toolName: "question",
-                output: { type: "text", value: "default" },
+                output: {
+                  type: "text",
+                  value: opencodeAnswer(JSON.parse(call.input).questions[0].question, "default"),
+                },
               },
             ],
           },
@@ -874,7 +993,10 @@ test("answering stop ends the turn as an error and spawns nothing", async () => 
                 type: "tool-result",
                 toolCallId: call.toolCallId,
                 toolName: "question",
-                output: { type: "text", value: "stop" },
+                output: {
+                  type: "text",
+                  value: opencodeAnswer(JSON.parse(call.input).questions[0].question, "stop"),
+                },
               },
             ],
           },

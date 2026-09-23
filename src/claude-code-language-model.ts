@@ -2690,7 +2690,10 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
     const failoverAnswer =
       compactionMode || useInteractive
         ? null
-        : consumeAccountFailoverAnswer(sk, options.prompt as any)
+        : consumeAccountFailoverAnswer(sk, options.prompt as any, {
+            sourceAccount,
+            candidates: failoverCandidates(this.config.failoverAccounts, sourceAccount),
+          })
 
     if (failoverAnswer?.kind === "stop") {
       // Dismissed, answered `stop`, or answered with something that is not

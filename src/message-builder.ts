@@ -474,6 +474,13 @@ export function getClaudeUserMessage(
   const cliToolCallIds = opts.cliToolCallIds
   const content: any[] = []
 
+  // The account-failover form is the plugin's own dialog: Claude never issued
+  // that call and never saw its answer. The transcript rebuilds stripped it
+  // already; the current message did not, so on the turn after a form the
+  // answer reached Claude as a stray `<opencode_tool_result>` ("The user
+  // dismissed this question"), measured 2026-09-23.
+  prompt = stripAccountFailoverParts(prompt)
+
   // Done once here, at the top, so every path below (the current message,
   // the fresh-session rebuild and the /compact transcript) sees the cleaned
   // text without each needing its own flag.
