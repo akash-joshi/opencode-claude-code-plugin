@@ -81,7 +81,14 @@ raised, so they survive context compaction; removed when answered, done or dropp
   its only call ever (2026-04-14) failed with ENOENT and no `.opencode/memory` exists.
   Still open: (1) `opencode-local-ollama`, which the maintainer asked to discuss last:
   264 replies, all 2026-03-25 to 2026-04-25, on 35B models no longer installed; the
-  Ollama server is running and has a model loaded by something else right now. (2) The
+  Ollama server is running and has a model loaded by something else right now. It is
+  the maintainer's own package (repo `khalilgharbaoui/opencode-local-ollama`, npm user
+  `kaygeee`); npm has only 0.1.0 while the repo is at unpublished 0.1.1. A port to
+  opencode 2 is not recommended: 2.0.11 ships a built-in `opencode.provider.ollama` in
+  its default provider list that discovers the same way, refreshes every 30 s, and
+  registers the same `ollama` id, so the two would collide. npm downloads: 74 last
+  week, 427 last month, 1,448 since publish; 2 stars. Choice pending: publish 0.1.1
+  with a "built in on opencode 2" README note, deprecate on npm, or leave it. (2) The
   `lmstudio` provider block: 9 replies on 2026-04-26 only, and LM Studio is not
   installed. (3) Whether to delete the Google and xAI login tokens those plugins left.
 
