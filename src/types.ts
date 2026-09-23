@@ -516,6 +516,13 @@ export interface ClaudeStreamMessage {
     description?: string
   }
 
+  /**
+   * On an `assistant` message the CLI synthesised to report a failure: the
+   * kind of failure (`authentication_failed`, `billing_error`, ...). Read by
+   * `accountBlockKind`; schema confirmed on Claude Code 2.1.280.
+   */
+  error?: string
+
   message?: {
     role?: string
     model?: string

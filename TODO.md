@@ -115,9 +115,9 @@ raised, so they survive context compaction; removed when answered, done or dropp
   OAuth session expired and could not be refreshed"; `claude-appical auth status` says
   `loggedIn: false`). Every appical turn from 19:00 failed in about 40 ms; `default` is
   fine. Fixed by the maintainer the same evening: `claude-appical auth login`, and
-  `auth status` now reports `loggedIn: true`, org Appical, team plan. Still offered:
-  turn that error into a note naming the account and the login command, and possibly
-  offer the account picker for it.
+  `auth status` now reports `loggedIn: true`, org Appical, team plan. The follow-up
+  is **done** (v0.26.3): an account the CLI reports as blocked now gets a note naming
+  it with the login command, and the switch form when another account exists.
 
 ## Parked
 

@@ -36,17 +36,21 @@ import {
 } from "./cli-events.js"
 import { DEFAULT_ACCOUNT, normalizeAccountName } from "./accounts.js"
 import {
+  accountBlockKind,
   buildFailoverContinuationPrompt,
   consumeAccountFailoverAnswer,
   createAccountFailoverQuestionCall,
+  describeAccountBlock,
   failoverCandidates,
   failoverUntil,
+  formatAccountBlockNote,
   formatFailoverNote,
   formatFailoverStopNote,
   isAccountFailoverQuestionActive,
   isAccountLimitError,
   resolveFailoverSpawn,
   setAccountOverride,
+  type AccountBlockKind,
   type FailoverSpawn,
 } from "./account-failover.js"
 import { DOCTOR_COMMAND, buildDoctorReport, parseDoctorCommand } from "./doctor.js"
@@ -3629,6 +3633,9 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
           // known account-limit error texts, never by a generic failure: a
           // transient error must not open a form that moves the billing.
           let accountLimitHit: { resetsAt?: number; window?: string } | null = null
+          // The account itself cannot serve (an expired login, a billing
+          // problem), from the `error` kind on the CLI's own failure reply.
+          let accountBlock: AccountBlockKind | null = null
 
         // Batched drain so claude CLI's parallel tool_use blocks (e.g. two
         // bash calls in one assistant message) end up in a single
@@ -3839,20 +3846,23 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
           // Only a turn that failed: a limit event on a turn that was served
           // is information, and replacing its answer with this form would
           // throw the answer away.
-          if (accountLimitHit && failoverAskActive && msg.is_error === true) {
+          if ((accountLimitHit || accountBlock) && failoverAskActive && msg.is_error === true) {
             const call = createAccountFailoverQuestionCall(sk, {
               sourceAccount,
               candidates: failoverAccounts,
-              resetsAt: accountLimitHit.resetsAt,
-              window: accountLimitHit.window,
+              resetsAt: accountLimitHit?.resetsAt,
+              window: accountLimitHit?.window,
+              reason: accountLimitHit || !accountBlock ? undefined : describeAccountBlock(accountBlock),
             })
             log.warn(
-              `Claude account "${sourceAccount}" is out of usage; asking which account to continue on.`,
+              `Claude account "${sourceAccount}" ${
+                accountLimitHit || !accountBlock ? "is out of usage" : `cannot serve (${accountBlock})`
+              }; asking which account to continue on.`,
               {
                 sessionKey: sk,
                 candidates: failoverAccounts,
                 toolCallId: call.toolCallId,
-                resetsAt: accountLimitHit.resetsAt ?? null,
+                resetsAt: accountLimitHit?.resetsAt ?? null,
               },
             )
             finishWithQuestionCall(call)
@@ -4034,6 +4044,10 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
                 endTextBlock()
               }
             }
+
+            // Not returned from: the reply's own text still renders below.
+            const block = accountBlockKind(msg)
+            if (block) accountBlock = block
 
             // A rejection is why the turn is about to fail. Put it in the
             // transcript so the reason does not live only in a log file that
@@ -4720,6 +4734,33 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
                 })
               ) {
                 accountLimitHit = {}
+              }
+
+              // Say which account and what to run. Without this the only
+              // thing on screen was the CLI's "Failed to authenticate: OAuth
+              // session expired", which names neither.
+              if (accountBlock && msg.is_error) {
+                // The CLI labels this result `success` with `is_error: true`,
+                // so nothing else marks the turn failed; without this it
+                // finished as an ordinary `stop` with the error as its answer.
+                resultFailure ??= accountBlock
+                const offeringSwitch = failoverAskActive
+                controller.enqueue({
+                  type: "text-delta",
+                  id: startTextBlock(),
+                  delta: formatAccountBlockNote({
+                    kind: accountBlock,
+                    account: sourceAccount,
+                    configDir: self.config.configDir,
+                    offeringSwitch,
+                  }),
+                })
+                endTextBlock()
+                log.warn(`Claude account "${sourceAccount}" cannot serve requests`, {
+                  sessionKey: sk,
+                  kind: accountBlock,
+                  offeringSwitch,
+                })
               }
 
               // A non-`success` subtype is a failed turn. Name it in the

@@ -1,5 +1,6 @@
 import type { LanguageModelV3 } from "@ai-sdk/provider"
 import {
+  ACCOUNT_BLOCK_MARKER,
   FAILOVER_MARKER,
   stripAccountFailoverParts,
 } from "./account-failover.js"
@@ -36,6 +37,7 @@ const PLUGIN_NOTE_MARKERS = [
   DOCTOR_MARKER,
   STREAM_TIMEOUT_MARKER,
   FAILOVER_MARKER,
+  ACCOUNT_BLOCK_MARKER,
 ]
 
 function isPluginNote(part: any): boolean {

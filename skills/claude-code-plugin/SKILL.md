@@ -232,8 +232,16 @@ Tell the user what a pick actually does before recommending one:
 - `stop`, dismissing the form, or answering with anything that is not one of the offered
   accounts ends the turn exactly as the rate-limit error does today. The limit is
   unchanged either way; failover moves the work, it does not create usage.
-- Only a rejected `rate_limit_event` or one of the two known account-limit error texts
-  opens the form. A generic 4xx, a timeout or a bad flag never does.
+- Only a rejected `rate_limit_event`, one of the two known account-limit error texts, or
+  an account-level failure the CLI reports on its own error reply opens the form. The
+  account-level kinds are `authentication_failed`, `oauth_org_not_allowed`,
+  `account_on_hold`, `verification_required` and `billing_error`. A generic 4xx, a
+  timeout or a bad flag never does.
+- An expired login also writes a `▌ **claude account:**` note naming the account and the
+  command to fix it: `claude auth login` for the default account, or
+  `CLAUDE_CONFIG_DIR=<that account's config dir> claude auth login` for a named one. When
+  a user reports "Failed to authenticate: OAuth session expired", that command is the
+  fix; a switch made from that form lasts until opencode restarts.
 - Not available on the interactive transport or on compaction turns.
 
 `{ "accountFailover": "off" }` keeps the plain rate-limit error.

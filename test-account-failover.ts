@@ -29,7 +29,10 @@ import { ensureAccountRuntime } from "./src/accounts.js"
 import {
   ACCOUNT_FAILOVER_TOOL_CALL_PREFIX,
   FAILOVER_MARKER,
+  ACCOUNT_BLOCK_MARKER,
   _resetAccountOverrides,
+  accountBlockKind,
+  loginCommandFor,
   buildFailoverContinuationPrompt,
   clearAccountOverride,
   consumeAccountFailoverAnswer,
@@ -687,6 +690,36 @@ const SERVED_WITH_OVERAGE_REJECTED_LINES = [
 ]
 const overageOnly = process.env.FAKE_CLI_OVERAGE_ONLY === "1"
 
+// What the CLI printed for every turn once the appical login expired on
+// 2026-09-23: its own synthetic reply, tagged with the \`error\` kind, then a
+// failed result. The text is the CLI's, the kind is from its 2.1.280 schema.
+const AUTH_TEXT = "Failed to authenticate: OAuth session expired and could not be refreshed"
+const AUTH_EXPIRED_LINES = [
+  { type: "system", subtype: "init", session_id: "limited-session", tools: [] },
+  {
+    type: "assistant",
+    session_id: "limited-session",
+    parent_tool_use_id: null,
+    error: "authentication_failed",
+    message: {
+      role: "assistant",
+      model: "<synthetic>",
+      stop_reason: "stop_sequence",
+      content: [{ type: "text", text: AUTH_TEXT }],
+    },
+  },
+  {
+    type: "result",
+    subtype: "success",
+    session_id: "limited-session",
+    is_error: true,
+    result: AUTH_TEXT,
+    duration_ms: 40,
+    num_turns: 1,
+  },
+]
+const authExpired = process.env.FAKE_CLI_AUTH_EXPIRED === "1"
+
 const rl = readline.createInterface({ input: process.stdin })
 let answered = false
 rl.on("line", (line) => {
@@ -701,7 +734,7 @@ rl.on("line", (line) => {
     }) + "\\n",
   )
   const lines = limited
-    ? (overageOnly ? SERVED_WITH_OVERAGE_REJECTED_LINES : LIMITED_LINES)
+    ? (authExpired ? AUTH_EXPIRED_LINES : overageOnly ? SERVED_WITH_OVERAGE_REJECTED_LINES : LIMITED_LINES)
     : FAILOVER_LINES
   for (const l of lines) {
     process.stdout.write(JSON.stringify(l) + "\\n")
@@ -732,7 +765,10 @@ setOpencodeClient({
 
 const MODEL_ID = "claude-test-failover@appical"
 
-async function buildFailoverModel(fake: ReturnType<typeof createFakeCli>) {
+async function buildFailoverModel(
+  fake: ReturnType<typeof createFakeCli>,
+  failoverAccounts: string[] = ["default", "appical"],
+) {
   // The limited account is reached through its own wrapper, exactly as a real
   // account provider reaches it; `default` is the failover target and has no
   // wrapper at all.
@@ -742,7 +778,7 @@ async function buildFailoverModel(fake: ReturnType<typeof createFakeCli>) {
     baseCliPath: fake.cliPath,
     configDir: runtime.configDir,
     account: "appical",
-    failoverAccounts: ["default", "appical"],
+    failoverAccounts,
     cwd: fake.cwd,
     bridgeOpencodeMcp: false,
     proxyOpencodeMcpTools: false,
@@ -821,6 +857,92 @@ test("a usage limit ends the turn on a question listing the other account", asyn
     _resetAccountOverrides()
     rmSync(fake.cwd, { recursive: true, force: true })
   }
+})
+
+test("an expired login names the account and the login command, and offers the switch", async () => {
+  _resetAccountOverrides()
+  _resetRateLimitReports()
+  _resetSystemInitReports()
+  const fake = createFakeCli()
+  const sk = sessionKey(
+    fake.cwd,
+    `${MODEL_ID}::tools::default::context=["claude-code",null]`,
+  )
+  process.env.FAKE_CLI_AUTH_EXPIRED = "1"
+  try {
+    const model = await buildFailoverModel(fake)
+    const parts = await drain(
+      await model.doStream({ prompt: turnOnePrompt, tools: TOOLS } as any),
+    )
+    const body = textOf(parts)
+    assert.match(body, /▌ \*\*claude account:\*\* the Claude account "appical" is not logged in/)
+    assert.match(body, /CLAUDE_CONFIG_DIR=\S*\.claude-appical claude auth login/)
+    assert.match(body, /Or pick another account below/)
+
+    const call = parts.find((part) => part.type === "tool-call")
+    assert.ok(call, "another configured account is offered")
+    const question = JSON.parse(call.input).questions[0]
+    assert.match(question.question, /"appical" is not logged in/)
+    assert.doesNotMatch(question.question, /out of usage/)
+    assert.deepEqual(question.options.map((option: any) => option.label), ["default", "stop"])
+    assert.equal(parts.find((part) => part.type === "finish").finishReason.unified, "tool-calls")
+  } finally {
+    delete process.env.FAKE_CLI_AUTH_EXPIRED
+    deleteActiveProcess(sk)
+    _resetAccountOverrides()
+    rmSync(fake.cwd, { recursive: true, force: true })
+  }
+})
+
+test("an expired login with no other account still says what to run", async () => {
+  _resetAccountOverrides()
+  _resetRateLimitReports()
+  _resetSystemInitReports()
+  const fake = createFakeCli()
+  const sk = sessionKey(
+    fake.cwd,
+    `${MODEL_ID}::tools::default::context=["claude-code",null]`,
+  )
+  process.env.FAKE_CLI_AUTH_EXPIRED = "1"
+  try {
+    const model = await buildFailoverModel(fake, ["appical"])
+    const parts = await drain(
+      await model.doStream({ prompt: turnOnePrompt, tools: TOOLS } as any),
+    )
+    const body = textOf(parts)
+    assert.match(body, /claude auth login`, then resend your message\.\n/)
+    assert.doesNotMatch(body, /pick another account/)
+    assert.equal(parts.some((part) => part.type === "tool-call"), false)
+    assert.equal(parts.find((part) => part.type === "finish").finishReason.unified, "error")
+  } finally {
+    delete process.env.FAKE_CLI_AUTH_EXPIRED
+    deleteActiveProcess(sk)
+    _resetAccountOverrides()
+    rmSync(fake.cwd, { recursive: true, force: true })
+  }
+})
+
+test("account blocks come from the CLI's error kind, and the login command names the account", () => {
+  assert.equal(accountBlockKind({ type: "assistant", error: "authentication_failed" }), "authentication_failed")
+  assert.equal(accountBlockKind({ type: "assistant", error: "billing_error" }), "billing_error")
+  // Request-level failures would fail on any account, so they open nothing.
+  assert.equal(accountBlockKind({ type: "assistant", error: "server_error" }), null)
+  assert.equal(accountBlockKind({ type: "assistant", error: "rate_limit" }), null)
+  assert.equal(accountBlockKind({ type: "assistant", error: "toString" }), null)
+  assert.equal(accountBlockKind({ type: "result", error: "authentication_failed" }), null)
+  assert.equal(accountBlockKind({ type: "assistant" }), null)
+
+  assert.equal(loginCommandFor(undefined), "claude auth login")
+  assert.equal(
+    loginCommandFor("/Users/me/.claude-work", "/Users/me"),
+    "CLAUDE_CONFIG_DIR=~/.claude-work claude auth login",
+  )
+  assert.equal(
+    loginCommandFor("/srv/claude-work", "/Users/me"),
+    "CLAUDE_CONFIG_DIR=/srv/claude-work claude auth login",
+  )
+  // The note is stripped from rebuilt transcripts like every other `▌` note.
+  assert.ok(ACCOUNT_BLOCK_MARKER.startsWith("▌"))
 })
 
 test("a served turn whose limit event only rejects overage keeps its answer and asks nothing", async () => {
