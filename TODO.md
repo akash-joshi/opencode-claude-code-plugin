@@ -110,8 +110,10 @@ raised, so they survive context compaction; removed when answered, done or dropp
 - 2026-09-23: the `appical` Claude Code login expired (CLI: "Failed to authenticate:
   OAuth session expired and could not be refreshed"; `claude-appical auth status` says
   `loggedIn: false`). Every appical turn from 19:00 failed in about 40 ms; `default` is
-  fine. The maintainer has to log in again. Offered: turn that error into a note naming
-  the account and the login command, and possibly offer the account picker for it.
+  fine. Fixed by the maintainer the same evening: `claude-appical auth login`, and
+  `auth status` now reports `loggedIn: true`, org Appical, team plan. Still offered:
+  turn that error into a note naming the account and the login command, and possibly
+  offer the account picker for it.
 
 ## Parked
 
