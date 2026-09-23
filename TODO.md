@@ -95,21 +95,18 @@ No pending questions.
 
 ## In progress
 
-- 2026-09-23: opencode **V2 support**. The plan lives in `V2.md` and is the active lane.
-  Short version: V2 is a new major of opencode, not a second API inside 1.x, and V1
-  plugin implementations do not run in it at all, so this plugin disappears the day the
-  maintainer's opencode moves to 2.x. The blocking capability question is answered:
-  `@opencode/plugin@2.0.11` ships an undocumented `ctx.aisdk` domain whose `language`
-  hook takes a `LanguageModelV3`, which is exactly what `ClaudeCodeLanguageModel`
-  already is, against the same `@ai-sdk/provider` major we already depend on. Dual V1
-  and V2 support from one package is officially supported and our default export is
-  already the right shape.
-  2026-09-23 update: built on branch `v2-support`, one package for both majors, with a
-  live table per feature in `V2.md` (V2 2.0.11 and V1 1.18.32 from the same `dist/`).
-  Left before release: a live check of account failover and permission prompts on V2,
-  and an npm-name install after publishing.
+- 2026-09-23: opencode 2, the checks that were not possible before release. (1) Install
+  by npm name: `plugins: ["@khalilgharbaoui/opencode-claude-code-plugin@0.26.0"]` failed
+  with `NpmInstallFail` right after publishing, because the registry's aggregate
+  packument still listed `latest: 0.24.0`; retry once it lists 0.26.0. (2) Account
+  failover and the plan-mode form on V2, which need a real usage limit and a headless
+  `ExitPlanMode`. (3) Permission prompts in the V2 TUI: every probe ran with `--auto`.
 
 ## Done
+
+- 2026-09-23: opencode **V2 support**, alongside V1, from one package: PR #44, squash
+  commit `ed815c9`, shipped in v0.26.0 with the account-failover false-rejection fix
+  (`65379ea`). Per-feature live evidence for both majors is in `V2.md`.
 
 - 2026-09-20: two lanes, account failover (PR #41) and small cleanup (PR #42), both
   merged and shipped in v0.24.0.
