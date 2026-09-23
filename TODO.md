@@ -100,8 +100,13 @@ raised, so they survive context compaction; removed when answered, done or dropp
   and may re-sync it; (b) open an npm support ticket with the evidence above; (c) both.
   `publish.yml` now prints `npm --version` and warns on the run when the record does
   not list the release. A support ticket is drafted locally at
-  `.opencode/npm-support-ticket.md`. Waiting on the maintainer for (a): `npm login`
-  then the `dist-tag add` above; (b) only if (a) does not re-sync it.
+  `.opencode/npm-support-ticket.md`. 23:52 local: the maintainer logged in and ran the
+  `dist-tag add …@0.27.0 latest`, which was a no-op ("latest is already set to version
+  0.27.0") and left the record at `_rev 83`. A real write (`dist-tag add …@0.27.0
+  next`) needs the maintainer's browser 2FA (`EOTP` from a non-interactive shell), so
+  it is theirs to run. Low expectation: the 0.27.0 publish itself rewrote the record
+  and still dropped the versions. If the `next` write does not bring the versions back,
+  submit the drafted ticket at npmjs.com/support.
 - 2026-09-23: branch `disable-thinking` (local and on origin) holds an unmerged
   `disableThinking` provider option from 2026-05-29. Kept during branch cleanup because
   it is unique work. Claude Code's own `CLAUDE_CODE_DISABLE_THINKING`, which the plugin
