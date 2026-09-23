@@ -23,7 +23,7 @@ type OpencodeClient = {
       path: { id: string }
       query?: { directory?: string }
     }) => Promise<{ data?: unknown; error?: unknown }>
-    /** `GET /session/status` — sessions missing from the map are idle. */
+    /** `GET /session/status`: sessions missing from the map are idle. */
     status?: () => Promise<{ data?: unknown; error?: unknown }>
   }
 }
