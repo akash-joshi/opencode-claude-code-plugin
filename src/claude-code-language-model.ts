@@ -71,6 +71,7 @@ import {
   fetchSessionParentId,
   type OpencodeToolListItem,
   resolveSpawnCwdForSession,
+  settleSessionRunState,
 } from "./runtime-status.js"
 import {
   getActiveProcess,
@@ -244,6 +245,18 @@ export function resolveOpencodeAgent(
     }
   }
   return undefined
+}
+
+/** An `AbortSignal.reason` as loggable text: its name and message, or its type. */
+export function describeAbortReason(reason: unknown): string {
+  if (reason === undefined) return "undefined"
+  if (reason instanceof Error) return `${reason.name}: ${reason.message}`
+  if (typeof reason === "string") return reason
+  try {
+    return JSON.stringify(reason) ?? typeof reason
+  } catch {
+    return typeof reason
+  }
 }
 
 /**
@@ -5055,23 +5068,54 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
           options.abortSignal.addEventListener("abort", () => {
             autoContinueState.aborted = true
             if (turnCompleted || controllerClosed) {
-              // This stream already ended on a proxy tool boundary and
-              // opencode was running the tool when the operator aborted.
-              // The CLI is parked in that call and nobody else will answer
-              // it; but only while no later turn has attached to the
-              // process, since that turn's calls are its own.
+              // This stream already ended on a proxy tool boundary. An abort
+              // here is NOT necessarily the operator: opencode 1.18.32 aborts
+              // the signal of every step that ends in tool calls, about a
+              // second after the finish, while it runs the tool (measured:
+              // 348 of 938 proxied calls on 2026-09-23, and every call in a
+              // plugin-only scratch config). Releasing on that rejected calls
+              // that were working, told Claude "the user doesn't want to
+              // proceed", and pushed each result into the next turn as text.
+              // The abort reason is the same `AbortError` either way, so
+              // opencode's session status decides: still busy means it is
+              // running the tool, idle means the operator stopped the turn.
+              // Unknown keeps the call, which at worst leaves a real abort
+              // waiting for the next message, as it did before release-on-
+              // abort existed.
+              const stoppedProcess = activeProcess
               if (
-                activeProcess &&
-                activeProcess.lineEmitter.listenerCount("line") === 0 &&
+                stoppedProcess &&
+                stoppedProcess.lineEmitter.listenerCount("line") === 0 &&
                 getPendingProxyCalls(sk).length > 0
               ) {
-                log.info("abort between proxy tool boundaries; releasing pending calls", { sk })
-                void interruptTurn(activeProcess).then((idle) => {
-                  log.info("interrupt sent for aborted turn", { sk, idle })
+                const reason = describeAbortReason(options.abortSignal?.reason)
+                void settleSessionRunState(affinity).then((stopped) => {
+                  // Re-checked after the wait: a later turn that attached in
+                  // the meantime owns these calls now.
+                  const stillParked =
+                    stoppedProcess.lineEmitter.listenerCount("line") === 0 &&
+                    getPendingProxyCalls(sk).length > 0
+                  // Only a positive `busy` keeps the call. `unknown` (no SDK
+                  // client, no status route, a failed read) releases exactly
+                  // as it did before this check existed, so a build that
+                  // cannot ask is never left worse off.
+                  if (stopped === "busy" || !stillParked) {
+                    log.debug("abort at a tool boundary while opencode is still running the turn; keeping pending calls", {
+                      sk,
+                      session: stopped,
+                      stillParked,
+                      reason,
+                    })
+                    return
+                  }
+                  log.info("abort between proxy tool boundaries; releasing pending calls", { sk, reason })
+                  void interruptTurn(stoppedProcess).then((idle) => {
+                    log.info("interrupt sent for aborted turn", { sk, idle })
+                  })
+                  releaseAbandonedProxyCalls(
+                    "Provider stream was aborted while opencode was running its proxy tool calls",
+                  )
                 })
-                releaseAbandonedProxyCalls(
-                  "Provider stream was aborted while opencode was running its proxy tool calls",
-                )
               }
               return
             }

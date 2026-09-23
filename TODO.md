@@ -53,15 +53,10 @@
 
 ## Backlog
 
-- 2026-09-23, observed from inside a plugin-driven session: every proxied tool call
-  (`bash`, `edit`, `write`) reaches the model as rejected ("The user doesn't want to
-  proceed with this tool use", then "[Request interrupted by user for tool use]"), yet
-  the tool ran and its result arrived on the next turn as `<opencode_tool_result>` text.
-  So the broker is not matching the result to the pending call, the CLI is being
-  interrupted, and each call costs an extra turn. Seen before and after an account
-  failover switch, with opencode-dcp loaded. Start from `plugin.log` around one call:
-  `abort between proxy tool boundaries`, `interrupt sent for aborted turn`, and
-  `rendering opencode-side tool result as text`. Not investigated yet.
+- 2026-09-23: **done**, shipped in v0.26.1. Proxied tool calls reached the model as
+  rejected while the tool actually ran: opencode 1.18.32 aborts the provider signal of
+  every step that ends in tool calls, and the plugin read that as the operator pressing
+  stop. Diagnosis and the session-status test in AGENTS.md's first runtime gotcha.
 
 ## Deferred decisions
 
