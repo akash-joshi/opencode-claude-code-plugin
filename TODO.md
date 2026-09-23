@@ -29,6 +29,9 @@
   never silent coupling. Do not start this without a user asking for it.
 
 - 2026-09-09, maintainer: "pin to appical but if limits hit switch to default is that possible?"
+  **Superseded:** built as account failover (0.24.0; the form first actually switched in
+  0.26.2). The per-agent `fallbackAccounts` shape below was not built; failover is
+  account-wide and asks rather than switching silently.
   Asked while designing the `dev-support` agent, which must run on the appical account for
   its per-profile MCP servers (Linear, Aikido, Sentry) but should survive that account's
   spend limit. Today it is not possible: the account is the provider, it is fixed for the
@@ -53,10 +56,8 @@
 
 ## Backlog
 
-- 2026-09-23: **done**, shipped in v0.26.1. Proxied tool calls reached the model as
-  rejected while the tool actually ran: opencode 1.18.32 aborts the provider signal of
-  every step that ends in tool calls, and the plugin read that as the operator pressing
-  stop. Diagnosis and the session-status test in AGENTS.md's first runtime gotcha.
+Nothing queued here; the working backlog is the vault note
+`opencode-claude-code-plugin/Future Features.md`.
 
 ## Deferred decisions
 
@@ -68,70 +69,25 @@
   timeout on startup.
 - 2026-09-20: The maintainer chose "later" for completing opencode's separate,
   global Linear OAuth authentication.
+- 2026-09-23: The maintainer parked `opencode-local-ollama` ("forget the
+  opencode-local-ollama we will get to it later or not because it dying"). State when
+  parked: it stays in the global config and cannot collide on either major (checked
+  live: opencode 2.0.11 refuses to load it and its built-in Ollama provider lists the
+  same models either way; 1.x has no built-in `ollama`). Release prep sits unmerged as
+  local-ollama PR #1 (`release-0.1.2`, OIDC publishing); publishing it still needs the
+  npm trusted publisher added on npmjs.com. The stale `v0.1.1` GitHub release is untouched.
+- 2026-09-23: global plugin cleanup, done: simple-memory, gemini-auth, grok-auth and
+  quota removed from `~/.config/opencode/opencode.json` (quota also from `tui.json`
+  and `tui.jsonc`, backups `*.bak-20260923-195510`), and the Google and xAI logins
+  deleted from opencode's `auth.json`. The unused `lmstudio` provider block is still
+  in the config; nobody asked to remove it.
 
 ## Open from you
 
 Questions the maintainer still owes an answer on. Written here the turn they are
 raised, so they survive context compaction; removed when answered, done or dropped.
 
-- 2026-09-23: global opencode plugin cleanup (maintainer's own config, not this repo).
-  Done: simple-memory, gemini-auth, grok-auth and quota removed from
-  `~/.config/opencode/opencode.json`, and quota from `tui.json` and `tui.jsonc`;
-  backups are `*.bak-20260923-195510` beside them. simple-memory had nothing to port:
-  its only call ever (2026-04-14) failed with ENOENT and no `.opencode/memory` exists.
-  Still open: (1) `opencode-local-ollama`, which the maintainer asked to discuss last:
-  264 replies, all 2026-03-25 to 2026-04-25, on 35B models no longer installed; the
-  Ollama server is running and has a model loaded by something else right now. It is
-  the maintainer's own package (repo `khalilgharbaoui/opencode-local-ollama`, npm user
-  `kaygeee`); npm has only 0.1.0 while the repo is at unpublished 0.1.1. A port to
-  opencode 2 is not recommended: 2.0.11 ships a built-in `opencode.provider.ollama` in
-  its default provider list that discovers the same way, refreshes every 30 s, and
-  registers the same `ollama` id, so the two would collide. npm downloads: 74 last
-  week, 427 last month, 1,448 since publish; 2 stars. Choice pending: publish 0.1.1
-  with a "built in on opencode 2" README note, deprecate on npm, or leave it. (2) The
-  `lmstudio` provider block: 9 replies on 2026-04-26 only, and LM Studio is not
-  installed. (3) Whether to delete the Google and xAI login tokens those plugins left.
-  Update, same day: the maintainer decided no opencode 2 port, keep local-ollama in the
-  config, and "make sure it won't collide"; delete the Google and xAI tokens (done:
-  `google` and `xai-oauth` removed from `~/.local/share/opencode/auth.json`, mode kept
-  0600); and publish 0.1.1 through an implementor task. That task never ran: background
-  subagents are disabled here, and the foreground retry was rejected by the deadline
-  bug below. The collision check was inconclusive: with both loaded in the V2 sandbox,
-  `opencode models` listed no `ollama` models at all. By reading the code a 1.x plugin
-  cannot load on 2.x (it exports no `setup`), so a collision needs the live check.
-  The release also needs npm trusted publishing set up: the repo's v0.1.1 publish run
-  failed and it has no `npm_token` secret.
-  Update, later the same day: **collision check done live**, no collision on either
-  major. In the V2 sandbox (2.0.11, `opencode serve`, `GET /api/model` after discovery)
-  the built-in provider listed `ollama/llama3.2:1b` and `ollama/qwen3.8:latest`, and the
-  list was identical with local-ollama configured, because opencode 2 refuses to load
-  it ("Plugin must export a default definition with an id and an effect or setup
-  function", one WARN in its log); 1.x has no built-in `ollama` provider. **Release
-  prep done** as local-ollama PR #1 (`release-0.1.2`: OIDC publishing, README
-  "opencode 2" note, 0.1.2, local checks all exit 0, 59 tests). Root cause of the
-  failed v0.1.1 run: the publish job's token secret does not exist (build job was
-  green; the run's logs have expired, so npm's own error line is not available).
-  **Waiting on the maintainer**: add the npm trusted publisher (GitHub Actions, user
-  `khalilgharbaoui`, repo `opencode-local-ollama`, workflow `npm-publish.yml`,
-  environment blank), then merge PR #1 and create release `v0.1.2` in the GitHub UI.
-  Optional: retire the stale `v0.1.1` GitHub release, which never reached npm.
-- 2026-09-23: **done** (v0.26.2). A proxied call waiting on an opencode permission
-  prompt was rejected at the plugin's 10-minute deadline, and the late approval then
-  cancelled Claude's next call ("rejected" though nobody rejected anything). The
-  deadline now extends while opencode reports the session busy. AGENTS.md, second
-  runtime gotcha.
-- 2026-09-23: **done** (v0.26.2), reported by the maintainer as "the switch form does
-  not work failed from day 1". It never switched: opencode returns the pick inside a
-  sentence the parser only recognised for the plan-approval question. Also fixed: an
-  answer after an opencode restart, and the answer leaking to Claude as text on the
-  next turn. AGENTS.md, third runtime gotcha. Still not tried against a real limit.
-- 2026-09-23: the `appical` Claude Code login expired (CLI: "Failed to authenticate:
-  OAuth session expired and could not be refreshed"; `claude-appical auth status` says
-  `loggedIn: false`). Every appical turn from 19:00 failed in about 40 ms; `default` is
-  fine. Fixed by the maintainer the same evening: `claude-appical auth login`, and
-  `auth status` now reports `loggedIn: true`, org Appical, team plan. The follow-up
-  is **done** (v0.26.3): an account the CLI reports as blocked now gets a note naming
-  it with the login command, and the switch form when another account exists.
+No pending questions.
 
 ## Parked
 
@@ -155,6 +111,28 @@ raised, so they survive context compaction; removed when answered, done or dropp
   `ExitPlanMode`. (3) Permission prompts in the V2 TUI: every probe ran with `--auto`.
 
 ## Done
+
+- 2026-09-23: **done**, shipped in v0.26.1. Proxied tool calls reached the model as
+  rejected while the tool actually ran: opencode 1.18.32 aborts the provider signal of
+  every step that ends in tool calls, and the plugin read that as the operator pressing
+  stop. Diagnosis and the session-status test in AGENTS.md's first runtime gotcha.
+- 2026-09-23: **done** (v0.26.2). A proxied call waiting on an opencode permission
+  prompt was rejected at the plugin's 10-minute deadline, and the late approval then
+  cancelled Claude's next call ("rejected" though nobody rejected anything). The
+  deadline now extends while opencode reports the session busy. AGENTS.md, second
+  runtime gotcha.
+- 2026-09-23: **done** (v0.26.2), reported by the maintainer as "the switch form does
+  not work failed from day 1". It never switched: opencode returns the pick inside a
+  sentence the parser only recognised for the plan-approval question. Also fixed: an
+  answer after an opencode restart, and the answer leaking to Claude as text on the
+  next turn. AGENTS.md, third runtime gotcha. Still not tried against a real limit.
+- 2026-09-23: the `appical` Claude Code login expired (CLI: "Failed to authenticate:
+  OAuth session expired and could not be refreshed"; `claude-appical auth status` says
+  `loggedIn: false`). Every appical turn from 19:00 failed in about 40 ms; `default` is
+  fine. Fixed by the maintainer the same evening: `claude-appical auth login`, and
+  `auth status` now reports `loggedIn: true`, org Appical, team plan. The follow-up
+  is **done** (v0.26.3): an account the CLI reports as blocked now gets a note naming
+  it with the login command, and the switch form when another account exists.
 
 - 2026-09-23: opencode **V2 support**, alongside V1, from one package: PR #44, squash
   commit `ed815c9`, shipped in v0.26.0 with the account-failover false-rejection fix
