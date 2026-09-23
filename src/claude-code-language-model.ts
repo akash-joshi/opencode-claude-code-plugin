@@ -35,7 +35,11 @@ import {
   reportRateLimitEvent,
   reportSystemInit,
 } from "./cli-events.js"
-import { DEFAULT_ACCOUNT, normalizeAccountName } from "./accounts.js"
+import {
+  DEFAULT_ACCOUNT,
+  accountConfigDirPath,
+  normalizeAccountName,
+} from "./accounts.js"
 import {
   accountBlockKind,
   buildFailoverContinuationPrompt,
@@ -1315,6 +1319,25 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
     })
   }
 
+  /**
+   * Arguments the skill bridge needs beyond `cwd` / `cliPath`: which
+   * `CLAUDE_CONFIG_DIR` this spawn reads its native skills from, and whether
+   * to drop the ones it already loads. A failover moves the spawn to another
+   * account, and therefore to that account's config dir.
+   */
+  private skillBridgeSpawn(failover: FailoverSpawn): {
+    configDir: string | undefined
+    skipNative: boolean
+  } {
+    return {
+      configDir:
+        failover.failedOver && failover.target
+          ? accountConfigDirPath(failover.target)
+          : this.config.configDir,
+      skipNative: this.config.bridgeSkipNativeSkills !== false,
+    }
+  }
+
   /** Share one lazy registry request within a turn without making it stale. */
   private createLiveToolInfoLoader(): () => Promise<LiveToolInfo> {
     let pending: Promise<LiveToolInfo> | undefined
@@ -2021,6 +2044,7 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
       cwd,
       cliPath,
       enabled: this.config.bridgeOpencodeSkills === true,
+      ...this.skillBridgeSpawn(failover),
     })
     const cliArgs = buildCliArgs({
       sessionKey: sk,
@@ -3049,6 +3073,7 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
                 cwd,
                 cliPath,
                 enabled: self.config.bridgeOpencodeSkills === true,
+                ...self.skillBridgeSpawn(failover),
               })
               const ap = spawnInteractiveProcess({
                 cwd,
@@ -3299,6 +3324,7 @@ export class ClaudeCodeLanguageModel implements LanguageModelV3 {
               cwd,
               cliPath,
               enabled: self.config.bridgeOpencodeSkills === true,
+              ...self.skillBridgeSpawn(failover),
             })
             cliArgs = buildCliArgs({
               sessionKey: sk,
