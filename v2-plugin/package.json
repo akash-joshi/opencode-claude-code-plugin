@@ -1,8 +1,0 @@
-{
-  "name": "claude-code-v2-local",
-  "version": "0.24.0-v2.1",
-  "private": true,
-  "type": "module",
-  "main": "./index.js",
-  "description": "Local V2 entrypoint for the Claude Code CLI provider adapter. Re-exports the built dist/v2.js so OpenCode V2 can load the plugin from a directory."
-}
